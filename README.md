@@ -223,9 +223,21 @@ docker compose up --build
 ## Claude Desktop snippet
 
 Default deployment mode for this server is **SSE/HTTP**.
-Claude Desktop often expects stdio process servers, so for SSE endpoints use an MCP bridge client.
+If your Claude Desktop build supports native Streamable HTTP MCP servers, connect directly to URL first.
 
-SSE-enabled Claude Desktop snippet (via `mcp-remote` bridge):
+Preferred (direct URL, no bridge):
+
+```json
+{
+  "mcpServers": {
+    "postgres-sse": {
+      "url": "http://127.0.0.1:8899/mcp"
+    }
+  }
+}
+```
+
+Fallback (for stdio-only clients) via `mcp-remote` bridge:
 
 ```json
 {
@@ -251,9 +263,23 @@ Settings file:
 `/Users/shadab/Library/Application Support/Code/User/globalStorage/shadab/settings/cline_mcp_settings.json`
 
 Default deployment mode for this server is **SSE/HTTP**.
-For Cline, use an MCP bridge when your backend server is exposed over SSE/HTTP.
+If your Cline build supports native Streamable HTTP MCP servers, connect directly to URL first.
 
-SSE-enabled Cline snippet (via `mcp-remote` bridge):
+Preferred (direct URL, no bridge):
+
+```json
+{
+  "mcpServers": {
+    "postgres-sse": {
+      "url": "http://127.0.0.1:8899/mcp",
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+Fallback (for stdio-only clients) via `mcp-remote` bridge:
 
 ```json
 {
@@ -272,7 +298,7 @@ SSE-enabled Cline snippet (via `mcp-remote` bridge):
 }
 ```
 
-> If your client version supports native Streamable HTTP MCP server URLs directly, you can connect to `http://127.0.0.1:8899/mcp` without a bridge.
+> Use direct URL where supported. Use `mcp-remote` only when your client requires stdio process transport.
 
 ---
 
