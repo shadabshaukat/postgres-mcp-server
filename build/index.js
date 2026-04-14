@@ -3,6 +3,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError, } from '@modelcontextprotocol/sdk/types.js';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import { URL } from 'node:url';
@@ -76,6 +77,51 @@ const maybeReadFile = (pathOrInline) => {
         return fs.readFileSync(pathOrInline, 'utf8');
     }
     return pathOrInline.replace(/\\n/g, '\n');
+};
+const normalizeConnectionStringCredentials = (connectionString) => {
+    if (!connectionString) {
+        return connectionString;
+    }
+    const m = connectionString.match(/^(postgres(?:ql)?:\/\/)([^@/]+)@(.*)$/i);
+    if (!m) {
+        return connectionString;
+    }
+    const [, prefix, rawCreds, tail] = m;
+    const colonIdx = rawCreds.indexOf(':');
+    const normalizePart = (part) => {
+        try {
+            return encodeURIComponent(decodeURIComponent(part));
+        }
+        catch {
+            return encodeURIComponent(part);
+        }
+    };
+    if (colonIdx === -1) {
+        const user = normalizePart(rawCreds);
+        return `${prefix}${user}@${tail}`;
+    }
+    const userRaw = rawCreds.slice(0, colonIdx);
+    const passRaw = rawCreds.slice(colonIdx + 1);
+    const user = normalizePart(userRaw);
+    const pass = normalizePart(passRaw);
+    return `${prefix}${user}:${pass}@${tail}`;
+};
+const validateAndWarnConnectionString = (connectionString) => {
+    if (!connectionString) {
+        return;
+    }
+    if (connectionString.includes('#')) {
+        console.error('[Startup Notice] Detected special characters in POSTGRES_URL/DATABASE_URL credentials. They will be URL-encoded automatically.');
+    }
+    try {
+        const parsed = new URL(connectionString);
+        if (['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+            console.error('[Startup Warning] Connection host is localhost/127.0.0.1. If running in Docker, this points to the container itself. Use host.docker.internal (macOS/Windows) or your host bridge/IP.');
+        }
+    }
+    catch {
+        // ignore parse errors here; pg can still parse some DSN styles
+    }
 };
 const buildSslConfig = () => {
     const sslMode = process.env.PGSSLMODE?.toLowerCase();
@@ -196,6 +242,7 @@ class PostgresMcpServer {
     sseHost;
     ssePort;
     ssePath;
+    dbConnectionString;
     httpServer;
     httpTransport;
     constructor() {
@@ -204,6 +251,8 @@ class PostgresMcpServer {
         this.sseHost = process.env.MCP_HTTP_HOST ?? '0.0.0.0';
         this.ssePort = Number(process.env.MCP_HTTP_PORT ?? '8080');
         this.ssePath = process.env.MCP_HTTP_PATH ?? '/mcp';
+        this.dbConnectionString = normalizeConnectionStringCredentials(process.env.POSTGRES_URL ?? process.env.DATABASE_URL);
+        validateAndWarnConnectionString(this.dbConnectionString);
         this.server = new Server({
             name: 'postgres-mcp-server',
             version: '0.1.0',
@@ -213,7 +262,7 @@ class PostgresMcpServer {
             },
         });
         this.pool = new Pool({
-            connectionString: process.env.POSTGRES_URL ?? process.env.DATABASE_URL,
+            connectionString: this.dbConnectionString,
             host: process.env.PGHOST,
             port: process.env.PGPORT ? Number(process.env.PGPORT) : undefined,
             database: process.env.PGDATABASE,
@@ -504,7 +553,7 @@ class PostgresMcpServer {
     }
     async runSseHttp() {
         this.httpTransport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: undefined,
+            sessionIdGenerator: () => randomUUID(),
         });
         await this.server.connect(this.httpTransport);
         this.httpServer = http.createServer(async (req, res) => {
@@ -513,6 +562,7 @@ class PostgresMcpServer {
             }
             catch (error) {
                 const message = error instanceof Error ? error.message : 'Unknown server error';
+                console.error(`[MCP HTTP Error] ${req.method ?? 'UNKNOWN'} ${req.url ?? '/'} -> ${message}`, error);
                 this.sendHttpError(res, 500, message);
             }
         });
@@ -796,7 +846,19 @@ class PostgresMcpServer {
         await this.pool.end();
         await this.server.close();
     }
+    async verifyDatabaseConnection() {
+        const result = await this.pool.query(`
+      SELECT
+        current_database() AS database,
+        current_user AS current_user,
+        inet_server_addr()::text AS server_address,
+        inet_server_port() AS server_port;
+    `);
+        const row = result.rows[0];
+        console.error(`Database connected successfully: db=${row.database}, user=${row.current_user}, host=${row.server_address ?? 'n/a'}, port=${row.server_port ?? 'n/a'}`);
+    }
     async run() {
+        await this.verifyDatabaseConnection();
         if (this.transportMode === 'sse') {
             await this.runSseHttp();
             return;

@@ -152,6 +152,11 @@ npm run start:stdio
 
 ## Docker (default examples use SSE)
 
+**Important architecture note:**
+- Only the **MCP app** runs in Docker.
+- Your PostgreSQL database can be remote (not in Docker).
+- If you use SSH local port forwarding (`localhost:5432` on your host), the container must reach your **host** tunnel endpoint via `host.docker.internal:5432`.
+
 Build image:
 
 ```bash
@@ -168,6 +173,29 @@ docker run --rm -p 8080:8080 \
   -e MCP_HTTP_PATH=/mcp \
   -e MCP_DB_MODE=read-only \
   -e POSTGRES_URL='postgres://user:pass@host:5432/db?sslmode=require' \
+  postgres-mcp-server:latest
+```
+
+> If Docker is running locally and PostgreSQL is reachable on your **host machine** (for example via SSH tunnel), do **not** use `localhost` in `POSTGRES_URL` inside the container. Use `host.docker.internal` instead.
+
+SSH tunnel example on host (outside Docker):
+
+```bash
+ssh -fNT -L 5432:10.140.1.41:5432 opc@138.2.95.169 -i /Users/shadab/Downloads/OracleContent/mydemo_vcn.priv
+```
+
+Then Docker app connects to the forwarded host port via `host.docker.internal:5432`.
+
+Example with host tunnel:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e MCP_TRANSPORT=sse \
+  -e MCP_HTTP_HOST=0.0.0.0 \
+  -e MCP_HTTP_PORT=8080 \
+  -e MCP_HTTP_PATH=/mcp \
+  -e MCP_DB_MODE=read-only \
+  -e POSTGRES_URL='postgres://postgres:RAbbithole1234%23%23@host.docker.internal:5432/postgres?sslmode=require' \
   postgres-mcp-server:latest
 ```
 
@@ -243,6 +271,40 @@ SSE-enabled Cline snippet (via `mcp-remote` bridge):
 ```
 
 > If your client version supports native Streamable HTTP MCP server URLs directly, you can connect to `http://127.0.0.1:8080/mcp` without a bridge.
+
+---
+
+## Troubleshooting SSE connection errors (500 / attach failure)
+
+If you see errors like:
+
+- `StreamableHTTPError ... Error POSTing to endpoint ... code: 500`
+- `Could not attach to MCP server postgres-sse`
+
+check these first:
+
+1. **Password URL encoding**
+   - Server now auto-encodes DB URL credentials behind the scenes.
+   - You can pass raw password characters (like `#`) in `POSTGRES_URL`.
+   - Example accepted as-is: `RAbbithole1234##`
+
+2. **Docker networking host**
+   - Inside container, `localhost` means the container itself.
+   - If DB tunnel is on host, use `host.docker.internal` (macOS/Windows).
+   - This project assumes: app in Docker, DB remote, tunnel on host.
+
+3. **Startup DB validation log**
+   - On successful DB connect, server now logs:
+   - `Database connected successfully: db=..., user=..., host=..., port=...`
+   - If this line is missing, DB connection failed before MCP transport became usable.
+
+4. **SSE endpoint check**
+   - Container log should show:
+   - `Postgres MCP server running on Streamable HTTP ... http://0.0.0.0:8080/mcp`
+
+5. **Bridge target**
+   - `mcp-remote` should target exactly:
+   - `http://127.0.0.1:8080/mcp`
 
 ---
 
