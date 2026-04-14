@@ -195,9 +195,11 @@ docker run --rm -p 8080:8080 \
   -e MCP_HTTP_PORT=8080 \
   -e MCP_HTTP_PATH=/mcp \
   -e MCP_DB_MODE=read-only \
-  -e POSTGRES_URL='postgres://postgres:RAbbithole1234%23%23@host.docker.internal:5432/postgres?sslmode=require' \
+  -e POSTGRES_URL='postgres://postgres:RAbbithole1234##@host.docker.internal:5432/postgres?sslmode=require' \
   postgres-mcp-server:latest
 ```
+
+The server will translate special characters in credentials internally before connecting.
 
 Run stdio mode in Docker:
 
