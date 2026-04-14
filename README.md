@@ -161,39 +161,13 @@ not `localhost:5432`.
 
 ---
 
-## Client Config (Preferred: Direct URL)
+## Client Config (Corrected for compatibility)
 
-If client supports native Streamable HTTP MCP:
+### Claude Desktop (recommended)
 
-### Claude Desktop
+Claude Desktop commonly requires stdio-style MCP server definitions (not raw `url`).
 
-```json
-{
-  "mcpServers": {
-    "postgres-sse": {
-      "url": "http://127.0.0.1:8899/mcp"
-    }
-  }
-}
-```
-
-### VS Code Cline
-
-```json
-{
-  "mcpServers": {
-    "postgres-sse": {
-      "url": "http://127.0.0.1:8899/mcp",
-      "disabled": false,
-      "autoApprove": []
-    }
-  }
-}
-```
-
-### Fallback (stdio bridge)
-
-If your client is stdio-only:
+Use:
 
 ```json
 {
@@ -209,6 +183,41 @@ If your client is stdio-only:
   }
 }
 ```
+
+### VS Code Cline
+
+#### Option A: Legacy SSE mode (most compatible)
+
+```json
+{
+  "mcpServers": {
+    "postgres-sse": {
+      "type": "sse",
+      "url": "http://127.0.0.1:8899/sse",
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+#### Option B: Streamable HTTP mode (newer clients)
+
+```json
+{
+  "mcpServers": {
+    "postgres-sse": {
+      "url": "http://127.0.0.1:8899/mcp",
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+> This server now supports **both** endpoints:
+> - Streamable HTTP: `/mcp`
+> - Legacy SSE: `/sse` with message POST endpoint `/messages`
 
 ---
 
@@ -231,6 +240,23 @@ Check:
 - server log shows SSE endpoint at `/mcp`
 - client URL is exactly `http://127.0.0.1:8899/mcp`
 - no port collision on `8899`
+
+### 1b) `SSE error: Non-200 status code (400)` in Cline
+
+Usually means the client is using legacy SSE protocol against `/mcp`.
+
+Fix by using Cline legacy SSE config:
+
+- `"type": "sse"`
+- `"url": "http://127.0.0.1:8899/sse"`
+
+or switch to a newer client build that supports Streamable HTTP `/mcp`.
+
+### 1c) Claude says config is invalid and skips server
+
+Claude Desktop likely rejected `url` style config.
+
+Use stdio-style bridge config (`command` + `args`) with `mcp-remote`.
 
 ### 2) Docker cannot reach Postgres
 

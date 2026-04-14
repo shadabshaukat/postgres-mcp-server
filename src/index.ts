@@ -2,6 +2,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -373,9 +374,18 @@ class PostgresMcpServer {
   private readonly sseHost: string;
   private readonly ssePort: number;
   private readonly ssePath: string;
+  private readonly legacySsePath: string;
+  private readonly legacyMessagesPath: string;
   private readonly databaseUri?: string;
   private httpServer?: http.Server;
   private httpTransport?: StreamableHTTPServerTransport;
+  private readonly legacySessions = new Map<
+    string,
+    {
+      transport: SSEServerTransport;
+      server: Server;
+    }
+  >();
 
   constructor() {
     this.accessMode = normalizeAccessMode(
@@ -388,6 +398,8 @@ class PostgresMcpServer {
     this.sseHost = process.env.MCP_HTTP_HOST ?? '0.0.0.0';
     this.ssePort = Number(process.env.MCP_HTTP_PORT ?? '8899');
     this.ssePath = process.env.MCP_HTTP_PATH ?? '/mcp';
+    this.legacySsePath = process.env.MCP_LEGACY_SSE_PATH ?? '/sse';
+    this.legacyMessagesPath = process.env.MCP_LEGACY_MESSAGES_PATH ?? '/messages';
 
     const rawUri =
       process.env.DATABASE_URI ?? process.env.POSTGRES_URL ?? process.env.DATABASE_URL;
@@ -407,7 +419,7 @@ class PostgresMcpServer {
     );
 
     this.db = new DbConnPool(this.databaseUri);
-    this.setupToolHandlers();
+    this.setupToolHandlers(this.server);
 
     this.server.onerror = (error: unknown) => {
       console.error('[MCP Server Error]', error);
@@ -423,8 +435,20 @@ class PostgresMcpServer {
     });
   }
 
-  private setupToolHandlers() {
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  private createSessionServer(): Server {
+    return new Server(
+      {
+        name: 'postgres-mcp-server',
+        version: '1.0.0',
+      },
+      {
+        capabilities: { tools: {} },
+      }
+    );
+  }
+
+  private setupToolHandlers(target: Server) {
+    target.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
           name: 'server_info',
@@ -492,7 +516,7 @@ class PostgresMcpServer {
       ],
     }));
 
-    this.server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
+    target.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       try {
         const name = request.params.name;
         const args = request.params.arguments;
@@ -785,8 +809,19 @@ class PostgresMcpServer {
 
   private async handleStreamableHttpRequest(req: http.IncomingMessage, res: http.ServerResponse) {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    if (url.pathname !== this.ssePath) {
-      this.sendHttpError(res, 404, `Not found. Use endpoint: ${this.ssePath}`);
+    const pathname = url.pathname;
+
+    if (pathname === this.legacySsePath || pathname === this.legacyMessagesPath) {
+      await this.handleLegacySseRequest(req, res, url);
+      return;
+    }
+
+    if (pathname !== this.ssePath) {
+      this.sendHttpError(
+        res,
+        404,
+        `Not found. Use endpoints: ${this.ssePath} (streamable), ${this.legacySsePath} (legacy SSE)`
+      );
       return;
     }
 
@@ -801,6 +836,70 @@ class PostgresMcpServer {
       return;
     }
     this.sendHttpError(res, 405, 'Method Not Allowed. Use GET, POST, or DELETE.');
+  }
+
+  private async handleLegacySseRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    url: URL
+  ) {
+    const method = (req.method ?? 'GET').toUpperCase();
+
+    if (url.pathname === this.legacySsePath) {
+      if (method !== 'GET') {
+        this.sendHttpError(res, 405, `Legacy SSE endpoint supports GET only: ${this.legacySsePath}`);
+        return;
+      }
+
+      const transport = new SSEServerTransport(this.legacyMessagesPath, res);
+      await transport.start();
+
+      const sessionId = transport.sessionId;
+      const server = this.createSessionServer();
+      this.setupToolHandlers(server);
+      server.onerror = (error: unknown) => {
+        console.error('[Legacy SSE MCP Server Error]', error);
+      };
+
+      transport.onclose = async () => {
+        const s = this.legacySessions.get(sessionId);
+        if (s) {
+          this.legacySessions.delete(sessionId);
+          await s.server.close();
+        }
+      };
+
+      this.legacySessions.set(sessionId, { transport, server });
+      await server.connect(transport);
+      return;
+    }
+
+    if (url.pathname === this.legacyMessagesPath) {
+      if (method !== 'POST') {
+        this.sendHttpError(
+          res,
+          405,
+          `Legacy messages endpoint supports POST only: ${this.legacyMessagesPath}`
+        );
+        return;
+      }
+
+      const sessionId = url.searchParams.get('sessionId') ?? '';
+      if (!sessionId) {
+        this.sendHttpError(res, 400, 'Missing sessionId query parameter for legacy SSE messages.');
+        return;
+      }
+
+      const session = this.legacySessions.get(sessionId);
+      if (!session) {
+        this.sendHttpError(res, 404, `No active legacy SSE session found for sessionId=${sessionId}`);
+        return;
+      }
+
+      const body = await this.parseJsonBody(req);
+      await session.transport.handlePostMessage(req, res, body);
+      return;
+    }
   }
 
   private async runSseHttp() {
@@ -831,6 +930,9 @@ class PostgresMcpServer {
     console.error(
       `Postgres MCP server running on Streamable HTTP (${this.accessMode}) at http://${this.sseHost}:${this.ssePort}${this.ssePath}`
     );
+    console.error(
+      `Legacy SSE compatibility enabled at http://${this.sseHost}:${this.ssePort}${this.legacySsePath} (messages: ${this.legacyMessagesPath})`
+    );
   }
 
   private async startupLog() {
@@ -858,6 +960,15 @@ class PostgresMcpServer {
   }
 
   private async shutdown() {
+    for (const [sessionId, session] of this.legacySessions.entries()) {
+      try {
+        await session.transport.close();
+        await session.server.close();
+      } finally {
+        this.legacySessions.delete(sessionId);
+      }
+    }
+
     if (this.httpServer) {
       await new Promise<void>((resolve) => this.httpServer?.close(() => resolve()));
       this.httpServer = undefined;
