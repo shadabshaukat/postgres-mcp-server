@@ -101,7 +101,7 @@ Use either:
 
 - `MCP_TRANSPORT=stdio|sse`
 - `MCP_HTTP_HOST` (default `0.0.0.0`)
-- `MCP_HTTP_PORT` (default `8080`)
+- `MCP_HTTP_PORT` (default `8899`)
 - `MCP_HTTP_PATH` (default `/mcp`)
 
 ### Access mode
@@ -132,7 +132,7 @@ npm run build
 Run in SSE mode (recommended for remote clients):
 
 ```bash
-MCP_TRANSPORT=sse MCP_HTTP_PORT=8080 MCP_DB_MODE=read-only POSTGRES_URL='postgres://user:pass@host:5432/db?sslmode=require' node build/index.js
+MCP_TRANSPORT=sse MCP_HTTP_PORT=8899 MCP_DB_MODE=read-only POSTGRES_URL='postgres://user:pass@host:5432/db?sslmode=require' node build/index.js
 ```
 
 Run in stdio mode (recommended for local desktop MCP):
@@ -166,10 +166,10 @@ docker build -t postgres-mcp-server:latest .
 Run SSE mode (default transport):
 
 ```bash
-docker run --rm -p 8080:8080 \
+docker run --rm -p 8899:8899 \
   -e MCP_TRANSPORT=sse \
   -e MCP_HTTP_HOST=0.0.0.0 \
-  -e MCP_HTTP_PORT=8080 \
+  -e MCP_HTTP_PORT=8899 \
   -e MCP_HTTP_PATH=/mcp \
   -e MCP_DB_MODE=read-only \
   -e POSTGRES_URL='postgres://user:pass@host:5432/db?sslmode=require' \
@@ -189,10 +189,10 @@ Then Docker app connects to the forwarded host port via `host.docker.internal:54
 Example with host tunnel:
 
 ```bash
-docker run --rm -p 8080:8080 \
+docker run --rm -p 8899:8899 \
   -e MCP_TRANSPORT=sse \
   -e MCP_HTTP_HOST=0.0.0.0 \
-  -e MCP_HTTP_PORT=8080 \
+  -e MCP_HTTP_PORT=8899 \
   -e MCP_HTTP_PATH=/mcp \
   -e MCP_DB_MODE=read-only \
   -e POSTGRES_URL='postgres://postgres:RAbbithole1234##@host.docker.internal:5432/postgres?sslmode=require' \
@@ -235,7 +235,7 @@ SSE-enabled Claude Desktop snippet (via `mcp-remote` bridge):
       "args": [
         "-y",
         "mcp-remote",
-        "http://127.0.0.1:8080/mcp"
+        "http://127.0.0.1:8899/mcp"
       ]
     }
   }
@@ -263,7 +263,7 @@ SSE-enabled Cline snippet (via `mcp-remote` bridge):
       "args": [
         "-y",
         "mcp-remote",
-        "http://127.0.0.1:8080/mcp"
+        "http://127.0.0.1:8899/mcp"
       ],
       "disabled": false,
       "autoApprove": []
@@ -272,7 +272,7 @@ SSE-enabled Cline snippet (via `mcp-remote` bridge):
 }
 ```
 
-> If your client version supports native Streamable HTTP MCP server URLs directly, you can connect to `http://127.0.0.1:8080/mcp` without a bridge.
+> If your client version supports native Streamable HTTP MCP server URLs directly, you can connect to `http://127.0.0.1:8899/mcp` without a bridge.
 
 ---
 
@@ -302,11 +302,11 @@ check these first:
 
 4. **SSE endpoint check**
    - Container log should show:
-   - `Postgres MCP server running on Streamable HTTP ... http://0.0.0.0:8080/mcp`
+   - `Postgres MCP server running on Streamable HTTP ... http://0.0.0.0:8899/mcp`
 
 5. **Bridge target**
    - `mcp-remote` should target exactly:
-   - `http://127.0.0.1:8080/mcp`
+   - `http://127.0.0.1:8899/mcp`
 
 ---
 

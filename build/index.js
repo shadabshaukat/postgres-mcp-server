@@ -123,6 +123,21 @@ const validateAndWarnConnectionString = (connectionString) => {
         // ignore parse errors here; pg can still parse some DSN styles
     }
 };
+const maskConnectionStringPassword = (connectionString) => {
+    if (!connectionString) {
+        return undefined;
+    }
+    try {
+        const parsed = new URL(connectionString);
+        if (parsed.password) {
+            parsed.password = '******';
+        }
+        return parsed.toString();
+    }
+    catch {
+        return connectionString.replace(/(postgres(?:ql)?:\/\/[^:\s@]+:)([^@\s]+)(@)/i, '$1******$3');
+    }
+};
 const buildSslConfig = () => {
     const sslMode = process.env.PGSSLMODE?.toLowerCase();
     const shouldEnableSsl = sslMode !== undefined &&
@@ -855,7 +870,23 @@ class PostgresMcpServer {
         inet_server_port() AS server_port;
     `);
         const row = result.rows[0];
-        console.error(`Database connected successfully: db=${row.database}, user=${row.current_user}, host=${row.server_address ?? 'n/a'}, port=${row.server_port ?? 'n/a'}`);
+        const maskedConn = maskConnectionStringPassword(this.dbConnectionString);
+        const maskedPgPassword = process.env.PGPASSWORD ? '******' : '(not set)';
+        console.error([
+            'Database connected successfully',
+            `db=${row.database}`,
+            `user=${row.current_user}`,
+            `host=${row.server_address ?? 'n/a'}`,
+            `port=${row.server_port ?? 'n/a'}`,
+            `mode=${this.accessMode}`,
+            `transport=${this.transportMode}`,
+            maskedConn ? `connectionString=${maskedConn}` : 'connectionString=(not set)',
+            `PGHOST=${process.env.PGHOST ?? '(not set)'}`,
+            `PGPORT=${process.env.PGPORT ?? '(not set)'}`,
+            `PGDATABASE=${process.env.PGDATABASE ?? '(not set)'}`,
+            `PGUSER=${process.env.PGUSER ?? '(not set)'}`,
+            `PGPASSWORD=${maskedPgPassword}`,
+        ].join(' | '));
     }
     async run() {
         await this.verifyDatabaseConnection();
