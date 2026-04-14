@@ -11,6 +11,9 @@
 [![Stars](https://img.shields.io/github/stars/shadabshaukat/postgres-mcp-server?style=social)](https://github.com/shadabshaukat/postgres-mcp-server/stargazers)
 [![Forks](https://img.shields.io/github/forks/shadabshaukat/postgres-mcp-server?style=social)](https://github.com/shadabshaukat/postgres-mcp-server/network/members)
 
+![Shadab Professional 1](https://github.com/user-attachments/assets/2b02282d-f9dc-4632-8dce-7bf4e230267f)
+
+
 
 This project was built to follow a more Enterprise Postgres-MCP style design:
 
