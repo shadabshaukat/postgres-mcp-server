@@ -692,16 +692,12 @@ class PostgresMcpServer {
                     this.streamableSessions.set(sid, { transport, server });
                 },
             });
-            transport.onclose = async () => {
-                const sid = transport.sessionId;
-                if (sid) {
-                    const s = this.streamableSessions.get(sid);
-                    if (s) {
-                        this.streamableSessions.delete(sid);
-                        await s.server.close();
-                    }
-                }
-            };
+            // NOTE:
+            // Some clients/proxies may transiently close/reopen the GET stream.
+            // If we immediately delete session state on onclose, subsequent POST tool calls
+            // with the same Mcp-Session-Id can fail with "Invalid Mcp-Session-Id".
+            // We keep session state until explicit shutdown.
+            transport.onclose = async () => { };
             await server.connect(transport);
             await transport.handleRequest(req, res, body);
             return;
