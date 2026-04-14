@@ -39,70 +39,9 @@ This project was built to follow a more Enterprise Postgres-MCP style design:
 
 ---
 
-## Environment Variables
-
-### Connection
-
-Use one of:
-
-- `DATABASE_URI` (preferred)
-- `POSTGRES_URL`
-- `DATABASE_URL`
-
-Or use PG envs (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`).
-
-### MCP runtime
-
-- `MCP_TRANSPORT=stdio|sse`
-- `MCP_DB_MODE=restricted|unrestricted`
-- `MCP_HTTP_HOST` (default `0.0.0.0`)
-- `MCP_HTTP_PORT` (default `8899`)
-- `MCP_HTTP_PATH` (default `/mcp`)
-
-### Helpful behavior switches
-
-- `MCP_AUTO_REMAP_LOCALHOST=true|false` (default `true`)
-  - If running inside Docker and connection host is `localhost`/`127.0.0.1`, rewrites host to `host.docker.internal` (or alias below).
-- `MCP_DOCKER_HOST_ALIAS` (default `host.docker.internal`)
-- `NODE_NO_WARNINGS=1` (default in Docker/compose examples)
-  - suppresses Node runtime warnings in container logs.
-  - set `NODE_NO_WARNINGS=0` if you want warnings visible.
-
-### SSL
-
-- `PGSSLMODE`
-- `PGSSLREJECTUNAUTHORIZED`
-- `PGSSLROOTCERT_PATH` / `PGSSLROOTCERT`
-- `PGSSLCERT_PATH` / `PGSSLCERT`
-- `PGSSLKEY_PATH` / `PGSSLKEY`
-- `MCP_SSL_FALLBACK_TO_DISABLE=true|false` (default `true`)
-  - If server detects `does not support SSL connections`, it retries once with `sslmode=disable`.
-
----
-
-## Special Character Passwords (fixed)
-
-You can provide raw special characters in URI credentials, for example:
-
-`YourPWD1234##!`
-
-The server normalizes/encodes URI credentials internally before connecting.
-
----
-
-## Startup Log Behavior (fixed)
-
-When DB connection succeeds, container/console logs include a detailed line like:
-
-- `Database connected successfully | db=... | user=... | host=... | port=... | ...`
-
-Connection password is masked in logs (`******`).
-
----
-
 ## Docker Run (App in Docker, DB remote)
 
-> Architecture: MCP app runs in Docker, Postgres stays remote.
+Architecture: MCP app runs in Docker, Postgres stays remote.
 
 Build:
 
@@ -330,3 +269,68 @@ npm run start
 npm run start:sse
 npm run start:stdio
 ```
+
+---
+
+# Miscellaneous Information
+
+## Environment Variables
+
+### Connection
+
+Use one of:
+
+- `DATABASE_URI` (preferred)
+- `POSTGRES_URL`
+- `DATABASE_URL`
+
+Or use PG envs (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`).
+
+### MCP runtime
+
+- `MCP_TRANSPORT=stdio|sse`
+- `MCP_DB_MODE=restricted|unrestricted`
+- `MCP_HTTP_HOST` (default `0.0.0.0`)
+- `MCP_HTTP_PORT` (default `8899`)
+- `MCP_HTTP_PATH` (default `/mcp`)
+
+### Helpful behavior switches
+
+- `MCP_AUTO_REMAP_LOCALHOST=true|false` (default `true`)
+  - If running inside Docker and connection host is `localhost`/`127.0.0.1`, rewrites host to `host.docker.internal` (or alias below).
+- `MCP_DOCKER_HOST_ALIAS` (default `host.docker.internal`)
+- `NODE_NO_WARNINGS=1` (default in Docker/compose examples)
+  - suppresses Node runtime warnings in container logs.
+  - set `NODE_NO_WARNINGS=0` if you want warnings visible.
+
+### SSL
+
+- `PGSSLMODE`
+- `PGSSLREJECTUNAUTHORIZED`
+- `PGSSLROOTCERT_PATH` / `PGSSLROOTCERT`
+- `PGSSLCERT_PATH` / `PGSSLCERT`
+- `PGSSLKEY_PATH` / `PGSSLKEY`
+- `MCP_SSL_FALLBACK_TO_DISABLE=true|false` (default `true`)
+  - If server detects `does not support SSL connections`, it retries once with `sslmode=disable`.
+
+---
+
+## Special Character Passwords 
+
+You can provide raw special characters in URI credentials, for example:
+
+`YourPWD1234##!`
+
+The server normalizes/encodes URI credentials internally before connecting.
+
+---
+
+## Startup Log Behavior 
+
+When DB connection succeeds, container/console logs include a detailed line like:
+
+- `Database connected successfully | db=... | user=... | host=... | port=... | ...`
+
+Connection password is masked in logs (`******`).
+
+---
