@@ -11,8 +11,7 @@
 [![Stars](https://img.shields.io/github/stars/shadabshaukat/postgres-mcp-server?style=social)](https://github.com/shadabshaukat/postgres-mcp-server/stargazers)
 [![Forks](https://img.shields.io/github/forks/shadabshaukat/postgres-mcp-server?style=social)](https://github.com/shadabshaukat/postgres-mcp-server/network/members)
 
-![Shadab Professional 1](https://github.com/user-attachments/assets/2b02282d-f9dc-4632-8dce-7bf4e230267f)
-
+<img width="1536" height="1024" alt="Building a server with Postgres power" src="https://github.com/user-attachments/assets/5af3c36b-7a7e-4c40-aa9b-da074205a2a2" />
 
 
 This project was built to follow a more Enterprise Postgres-MCP style design:
