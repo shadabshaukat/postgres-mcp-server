@@ -155,6 +155,18 @@ const maskConnectionUriPassword = (uri) => {
         return uri.replace(/(postgres(?:ql)?:\/\/[^:\s@]+:)([^@\s]+)(@)/i, '$1******$3');
     }
 };
+const setConnectionUriSslMode = (uri, mode) => {
+    if (!uri)
+        return uri;
+    try {
+        const parsed = new URL(uri);
+        parsed.searchParams.set('sslmode', mode);
+        return parsed.toString();
+    }
+    catch {
+        return uri;
+    }
+};
 const stripComments = (sql) => {
     let s = sql.trimStart();
     while (true) {
@@ -203,16 +215,37 @@ const assertRestrictedSqlSafe = (sql) => {
     return stmt;
 };
 class DbConnPool {
+    connectionString;
     pool;
+    sslConfig;
     constructor(connectionString) {
+        this.connectionString = connectionString;
+        this.sslConfig = buildSslConfig();
         this.pool = new Pool({
-            connectionString,
+            connectionString: this.connectionString,
             host: process.env.PGHOST,
             port: process.env.PGPORT ? Number(process.env.PGPORT) : undefined,
             database: process.env.PGDATABASE,
             user: process.env.PGUSER,
             password: process.env.PGPASSWORD,
-            ssl: buildSslConfig(),
+            ssl: this.sslConfig,
+            max: Number(process.env.PGPOOL_MAX ?? '10'),
+            idleTimeoutMillis: Number(process.env.PGPOOL_IDLE_TIMEOUT_MS ?? '30000'),
+            connectionTimeoutMillis: Number(process.env.PGPOOL_CONNECTION_TIMEOUT_MS ?? '10000'),
+        });
+    }
+    async rebuildPool(nextConnectionString, nextSslConfig) {
+        await this.pool.end();
+        this.connectionString = nextConnectionString;
+        this.sslConfig = nextSslConfig;
+        this.pool = new Pool({
+            connectionString: this.connectionString,
+            host: process.env.PGHOST,
+            port: process.env.PGPORT ? Number(process.env.PGPORT) : undefined,
+            database: process.env.PGDATABASE,
+            user: process.env.PGUSER,
+            password: process.env.PGPASSWORD,
+            ssl: this.sslConfig,
             max: Number(process.env.PGPOOL_MAX ?? '10'),
             idleTimeoutMillis: Number(process.env.PGPOOL_IDLE_TIMEOUT_MS ?? '30000'),
             connectionTimeoutMillis: Number(process.env.PGPOOL_CONNECTION_TIMEOUT_MS ?? '10000'),
@@ -222,14 +255,34 @@ class DbConnPool {
         return this.pool.query(sql, params);
     }
     async testConnection() {
-        const result = await this.pool.query(`
-      SELECT
-        current_database() AS database,
-        current_user AS current_user,
-        inet_server_addr()::text AS server_address,
-        inet_server_port() AS server_port;
-    `);
-        return result.rows[0];
+        try {
+            const result = await this.pool.query(`
+        SELECT
+          current_database() AS database,
+          current_user AS current_user,
+          inet_server_addr()::text AS server_address,
+          inet_server_port() AS server_port;
+      `);
+            return result.rows[0];
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            const allowFallback = readBool(process.env.MCP_SSL_FALLBACK_TO_DISABLE, true);
+            if (allowFallback && /does not support ssl connections/i.test(message)) {
+                const nextConnectionString = setConnectionUriSslMode(this.connectionString, 'disable');
+                console.error('[Startup Notice] Database rejected SSL. Retrying once with sslmode=disable (set MCP_SSL_FALLBACK_TO_DISABLE=false to disable this behavior).');
+                await this.rebuildPool(nextConnectionString, undefined);
+                const retry = await this.pool.query(`
+          SELECT
+            current_database() AS database,
+            current_user AS current_user,
+            inet_server_addr()::text AS server_address,
+            inet_server_port() AS server_port;
+        `);
+                return retry.rows[0];
+            }
+            throw error;
+        }
     }
     async close() {
         await this.pool.end();

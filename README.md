@@ -72,6 +72,8 @@ Or use PG envs (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`).
 - `PGSSLROOTCERT_PATH` / `PGSSLROOTCERT`
 - `PGSSLCERT_PATH` / `PGSSLCERT`
 - `PGSSLKEY_PATH` / `PGSSLKEY`
+- `MCP_SSL_FALLBACK_TO_DISABLE=true|false` (default `true`)
+  - If server detects `does not support SSL connections`, it retries once with `sslmode=disable`.
 
 ---
 
@@ -235,7 +237,23 @@ Check:
 - use `host.docker.internal` for host-side tunnel endpoints
 - ensure tunnel is active before starting container
 
-### 3) Port already allocated
+### 3) `The server does not support SSL connections`
+
+This means your target Postgres endpoint is plain TCP (non-SSL) while URI requested SSL.
+
+Options:
+
+- Use `?sslmode=disable` directly in `DATABASE_URI`, or
+- Keep current URI and rely on automatic one-time fallback (enabled by default):
+  - `MCP_SSL_FALLBACK_TO_DISABLE=true`
+
+If you want strict behavior (no fallback), set:
+
+```bash
+-e MCP_SSL_FALLBACK_TO_DISABLE=false
+```
+
+### 4) Port already allocated
 
 Either stop process using 8899 or run with another port:
 
