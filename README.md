@@ -192,28 +192,21 @@ docker compose up --build
 
 ## Claude Desktop snippet
 
-Default deployment mode for this server is **SSE/HTTP**. 
-However, today Claude Desktop MCP integration typically launches local MCP servers over **stdio**.
+Default deployment mode for this server is **SSE/HTTP**.
+Claude Desktop often expects stdio process servers, so for SSE endpoints use an MCP bridge client.
 
-So:
-- Use SSE as your default runtime/deployment mode for service hosting.
-- Use stdio for Claude Desktop process integration.
-
-Working Claude Desktop snippet (stdio transport):
+SSE-enabled Claude Desktop snippet (via `mcp-remote` bridge):
 
 ```json
 {
   "mcpServers": {
-    "postgres": {
-      "command": "node",
+    "postgres-sse": {
+      "command": "npx",
       "args": [
-        "/Users/shadab/Downloads/OracleContent/Shadab-Mac-ORCL/Documents/Postgres-MCP/build/index.js",
-        "--transport=stdio",
-        "--db-mode=read-only"
-      ],
-      "env": {
-        "POSTGRES_URL": "postgres://username:password@host:5432/dbname?sslmode=require"
-      }
+        "-y",
+        "mcp-remote",
+        "http://127.0.0.1:8080/mcp"
+      ]
     }
   }
 }
@@ -228,29 +221,28 @@ Settings file:
 `/Users/shadab/Library/Application Support/Code/User/globalStorage/shadab/settings/cline_mcp_settings.json`
 
 Default deployment mode for this server is **SSE/HTTP**.
-For local Cline MCP process integration, use **stdio** transport.
+For Cline, use an MCP bridge when your backend server is exposed over SSE/HTTP.
 
-Working Cline snippet (stdio transport):
+SSE-enabled Cline snippet (via `mcp-remote` bridge):
 
 ```json
 {
   "mcpServers": {
-    "postgres": {
-      "command": "node",
+    "postgres-sse": {
+      "command": "npx",
       "args": [
-        "/Users/shadab/Downloads/OracleContent/Shadab-Mac-ORCL/Documents/Postgres-MCP/build/index.js",
-        "--transport=stdio",
-        "--db-mode=read-only"
+        "-y",
+        "mcp-remote",
+        "http://127.0.0.1:8080/mcp"
       ],
-      "env": {
-        "POSTGRES_URL": "postgres://username:password@host:5432/dbname?sslmode=require"
-      },
       "disabled": false,
       "autoApprove": []
     }
   }
 }
 ```
+
+> If your client version supports native Streamable HTTP MCP server URLs directly, you can connect to `http://127.0.0.1:8080/mcp` without a bridge.
 
 ---
 
