@@ -261,6 +261,20 @@ Claude Desktop likely rejected `url` style config.
 
 Use stdio-style bridge config (`command` + `args`) with `mcp-remote`.
 
+### 1d) Errors like `Server not initialized` / `Server already initialized` / `Mcp-Session-Id header is required`
+
+These were due to session-routing behavior in older builds.
+
+Fix:
+
+- rebuild image from latest code:
+
+```bash
+docker build --no-cache -t postgres-mcp-server:latest .
+```
+
+- restart container and reconnect Claude/Cline.
+
 ### 2) Docker cannot reach Postgres
 
 - use `host.docker.internal` for host-side tunnel endpoints

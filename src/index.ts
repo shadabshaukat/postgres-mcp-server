@@ -229,6 +229,19 @@ const detectStatementType = (sql: string): string => {
   return first;
 };
 
+const isInitializeRequest = (body: unknown): boolean => {
+  if (!body || typeof body !== 'object') return false;
+  const method = (body as Record<string, unknown>).method;
+  return method === 'initialize';
+};
+
+const getSessionIdHeader = (req: http.IncomingMessage): string | undefined => {
+  const raw = req.headers['mcp-session-id'];
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  if (Array.isArray(raw) && raw[0]?.trim()) return raw[0].trim();
+  return undefined;
+};
+
 const assertRestrictedSqlSafe = (sql: string): string => {
   const cleaned = sql.trim().replace(/;+\s*$/, '');
   if (!cleaned) {
@@ -378,7 +391,13 @@ class PostgresMcpServer {
   private readonly legacyMessagesPath: string;
   private readonly databaseUri?: string;
   private httpServer?: http.Server;
-  private httpTransport?: StreamableHTTPServerTransport;
+  private readonly streamableSessions = new Map<
+    string,
+    {
+      transport: StreamableHTTPServerTransport;
+      server: Server;
+    }
+  >();
   private readonly legacySessions = new Map<
     string,
     {
@@ -826,15 +845,80 @@ class PostgresMcpServer {
     }
 
     const method = (req.method ?? 'GET').toUpperCase();
+    const sessionId = getSessionIdHeader(req);
+
     if (method === 'POST') {
       const body = await this.parseJsonBody(req);
-      await this.httpTransport!.handleRequest(req, res, body);
+
+      if (sessionId) {
+        const existing = this.streamableSessions.get(sessionId);
+        if (!existing) {
+          this.sendHttpError(res, 400, `Invalid Mcp-Session-Id: ${sessionId}`);
+          return;
+        }
+        await existing.transport.handleRequest(req, res, body);
+        return;
+      }
+
+      if (!isInitializeRequest(body)) {
+        this.sendHttpError(
+          res,
+          400,
+          'No Mcp-Session-Id header. First request must be initialize (POST /mcp).'
+        );
+        return;
+      }
+
+      const server = this.createSessionServer();
+      this.setupToolHandlers(server);
+      server.onerror = (error: unknown) => {
+        console.error('[Streamable MCP Server Error]', error);
+      };
+
+      let transport: StreamableHTTPServerTransport;
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sid) => {
+          this.streamableSessions.set(sid, { transport, server });
+        },
+      });
+
+      transport.onclose = async () => {
+        const sid = transport.sessionId;
+        if (sid) {
+          const s = this.streamableSessions.get(sid);
+          if (s) {
+            this.streamableSessions.delete(sid);
+            await s.server.close();
+          }
+        }
+      };
+
+      await server.connect(transport);
+      await transport.handleRequest(req, res, body);
       return;
     }
+
     if (method === 'GET' || method === 'DELETE') {
-      await this.httpTransport!.handleRequest(req, res);
+      if (!sessionId) {
+        this.sendHttpError(
+          res,
+          400,
+          'Mcp-Session-Id header is required. Start with initialize POST to /mcp.'
+        );
+        return;
+      }
+
+      const existing = this.streamableSessions.get(sessionId);
+      if (!existing) {
+        this.sendHttpError(res, 400, `Invalid Mcp-Session-Id: ${sessionId}`);
+        return;
+      }
+
+      await existing.transport.handleRequest(req, res);
       return;
     }
+
     this.sendHttpError(res, 405, 'Method Not Allowed. Use GET, POST, or DELETE.');
   }
 
@@ -902,11 +986,6 @@ class PostgresMcpServer {
   }
 
   private async runSseHttp() {
-    this.httpTransport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-    });
-    await this.server.connect(this.httpTransport);
-
     this.httpServer = http.createServer(async (req, res) => {
       try {
         await this.handleStreamableHttpRequest(req, res);
@@ -959,6 +1038,15 @@ class PostgresMcpServer {
   }
 
   private async shutdown() {
+    for (const [sessionId, session] of this.streamableSessions.entries()) {
+      try {
+        await session.transport.close();
+        await session.server.close();
+      } finally {
+        this.streamableSessions.delete(sessionId);
+      }
+    }
+
     for (const [sessionId, session] of this.legacySessions.entries()) {
       try {
         await session.transport.close();
@@ -971,10 +1059,6 @@ class PostgresMcpServer {
     if (this.httpServer) {
       await new Promise<void>((resolve) => this.httpServer?.close(() => resolve()));
       this.httpServer = undefined;
-    }
-    if (this.httpTransport) {
-      await this.httpTransport.close();
-      this.httpTransport = undefined;
     }
     await this.db.close();
     await this.server.close();
