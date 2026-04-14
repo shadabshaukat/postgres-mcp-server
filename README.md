@@ -55,19 +55,19 @@ This project was built to follow a more Enterprise Postgres-MCP style design:
 
 Architecture: MCP app runs in Docker, Postgres stays remote.
 
-Git:
+### Git:
 
 ```bash
 git clone https://github.com/shadabshaukat/postgres-mcp-server.git && cd postgres-mcp-server/
 ```
 
-Build:
+### Build:
 
 ```bash
 docker build --no-cache -t postgres-mcp-server:latest .
 ```
 
-Run:
+### Run:
 
 ```bash
 docker run --rm -p 8899:8899 \
@@ -91,10 +91,33 @@ docker run --rm -p 8899:8899 \
   -e POSTGRES_URL='postgres://postgres:YourPWD1234##@localhost:5432/postgres?sslmode=require' \
   postgres-mcp-server:latest
 ```
-Alternative : Pull latest image from Docker hub:
 
+---
+
+### Alternative - Pull latest image from Docker hub 
+
+#### Docker auto-selects the right architecture
+
+Default (auto-detect arch)
 ```bash
 docker pull 9382382888/postgres-mcp-server:latest
+```
+
+#### Pull a specific architecture explicitly
+
+AMD64
+```bash
+docker pull --platform linux/amd64 9382382888/postgres-mcp-server:latest
+```
+
+ARM64
+```bash
+docker pull --platform linux/arm64 9382382888/postgres-mcp-server:latest
+```
+
+#### Verify what was pulled 
+```bash
+docker image inspect 9382382888/postgres-mcp-server:latest --format '{{.Architecture}}/{{.Os}}'
 ```
 
 ---
