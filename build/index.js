@@ -632,7 +632,7 @@ class PostgresMcpServer {
         }
     }
     sendHttpError(res, code, message, details) {
-        if (res.writableEnded)
+        if (res.writableEnded || res.headersSent)
             return;
         res.statusCode = code;
         res.setHeader('Content-Type', 'application/json');
@@ -669,7 +669,6 @@ class PostgresMcpServer {
                 return;
             }
             const transport = new SSEServerTransport(this.legacyMessagesPath, res);
-            await transport.start();
             const sessionId = transport.sessionId;
             const server = this.createSessionServer();
             this.setupToolHandlers(server);

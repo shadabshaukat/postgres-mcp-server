@@ -801,7 +801,7 @@ class PostgresMcpServer {
   }
 
   private sendHttpError(res: http.ServerResponse, code: number, message: string, details?: unknown) {
-    if (res.writableEnded) return;
+    if (res.writableEnded || res.headersSent) return;
     res.statusCode = code;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: message, details }, null, 2));
@@ -852,7 +852,6 @@ class PostgresMcpServer {
       }
 
       const transport = new SSEServerTransport(this.legacyMessagesPath, res);
-      await transport.start();
 
       const sessionId = transport.sessionId;
       const server = this.createSessionServer();
