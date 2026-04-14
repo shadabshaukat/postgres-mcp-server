@@ -79,7 +79,7 @@ Or use PG envs (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`).
 
 You can provide raw special characters in URI credentials, for example:
 
-`RAbbithole1234##`
+`<db_password_with_special_chars>`
 
 The server normalizes/encodes URI credentials internally before connecting.
 
@@ -107,13 +107,13 @@ npm run build
 Run SSE:
 
 ```bash
-MCP_TRANSPORT=sse MCP_HTTP_PORT=8899 MCP_DB_MODE=restricted DATABASE_URI='postgres://user:pass@host:5432/dbname?sslmode=require' node build/index.js
+MCP_TRANSPORT=sse MCP_HTTP_PORT=8899 MCP_DB_MODE=restricted DATABASE_URI='postgres://<db_user>:<db_password>@<db_host>:5432/<db_name>?sslmode=require' node build/index.js
 ```
 
 Run stdio:
 
 ```bash
-MCP_TRANSPORT=stdio MCP_DB_MODE=restricted DATABASE_URI='postgres://user:pass@host:5432/dbname?sslmode=require' node build/index.js
+MCP_TRANSPORT=stdio MCP_DB_MODE=restricted DATABASE_URI='postgres://<db_user>:<db_password>@<db_host>:5432/<db_name>?sslmode=require' node build/index.js
 ```
 
 ---
@@ -137,7 +137,7 @@ docker run --rm -p 8899:8899 \
   -e MCP_HTTP_PORT=8899 \
   -e MCP_HTTP_PATH=/mcp \
   -e MCP_DB_MODE=restricted \
-  -e DATABASE_URI='postgres://postgres:RAbbithole1234##@host.docker.internal:5432/postgres?sslmode=require' \
+  -e DATABASE_URI='postgres://<db_user>:<db_password>@host.docker.internal:5432/<db_name>?sslmode=require' \
   postgres-mcp-server:latest
 ```
 
@@ -148,7 +148,7 @@ docker run --rm -p 8899:8899 \
 If you forward remote DB to host `localhost:5432`:
 
 ```bash
-ssh -fNT -L 5432:10.140.1.41:5432 opc@138.2.95.169 -i /Users/shadab/Downloads/OracleContent/mydemo_vcn.priv
+ssh -fNT -L 5432:<remote_db_private_ip>:5432 <ssh_user>@<ssh_bastion_host> -i /absolute/path/to/private_key
 ```
 
 Then from Docker app, use:
