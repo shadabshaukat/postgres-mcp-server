@@ -1,4 +1,4 @@
-# Postgres MCP Server (Shadab Mohammad)
+# Postgres Enterprise MCP Server 
 
 This project was built to follow a more Enterprise Postgres-MCP style design:
 
