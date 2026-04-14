@@ -5,6 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/postgres-mcp-server)](https://www.npmjs.com/package/postgres-mcp-server)
 [![Build](https://img.shields.io/github/actions/workflow/status/shadabshaukat/postgres-mcp-server/<workflow-file>.yml?branch=main)](https://github.com/shadabshaukat/postgres-mcp-server/actions)
 [![Last Commit](https://img.shields.io/github/last-commit/shadabshaukat/postgres-mcp-server)](https://github.com/shadabshaukat/postgres-mcp-server/commits/main)
+[![Docker Pulls](https://img.shields.io/docker/pulls/9382382888/postgres-mcp-server)](https://hub.docker.com/r/9382382888/postgres-mcp-server)
 [![Issues](https://img.shields.io/github/issues/shadabshaukat/postgres-mcp-server)](https://github.com/shadabshaukat/postgres-mcp-server/issues)
 [![Pull Requests](https://img.shields.io/github/issues-pr/shadabshaukat/postgres-mcp-server)](https://github.com/shadabshaukat/postgres-mcp-server/pulls)
 [![Stars](https://img.shields.io/github/stars/shadabshaukat/postgres-mcp-server?style=social)](https://github.com/shadabshaukat/postgres-mcp-server/stargazers)
