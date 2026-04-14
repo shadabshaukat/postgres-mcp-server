@@ -1,0 +1,23 @@
+services:
+  postgres-mcp:
+    build: .
+    image: postgres-mcp-server:latest
+    ports:
+      - "${MCP_HTTP_PORT:-8080}:${MCP_HTTP_PORT:-8080}"
+    environment:
+      POSTGRES_URL: ${POSTGRES_URL}
+      MCP_TRANSPORT: ${MCP_TRANSPORT:-sse}
+      MCP_HTTP_HOST: ${MCP_HTTP_HOST:-0.0.0.0}
+      MCP_HTTP_PORT: ${MCP_HTTP_PORT:-8080}
+      MCP_HTTP_PATH: ${MCP_HTTP_PATH:-/mcp}
+      MCP_DB_MODE: ${MCP_DB_MODE:-read-only}
+      PGSSLMODE: ${PGSSLMODE:-require}
+      PGSSLREJECTUNAUTHORIZED: ${PGSSLREJECTUNAUTHORIZED:-true}
+      # Optional cert material if needed:
+      # PGSSLROOTCERT_PATH: /certs/ca.pem
+      # PGSSLCERT_PATH: /certs/client.crt
+      # PGSSLKEY_PATH: /certs/client.key
+    # volumes:
+    #   - ./certs:/certs:ro
+    stdin_open: false
+    tty: false

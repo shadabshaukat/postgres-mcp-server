@@ -1,0 +1,33 @@
+{
+  "name": "postgres-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for querying Postgres user data, system catalogs, and views",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "postgres-mcp-server": "build/index.js"
+  },
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
+    "dev": "tsx src/index.ts",
+    "start": "node build/index.js",
+    "start:sse": "MCP_TRANSPORT=sse node build/index.js",
+    "start:stdio": "MCP_TRANSPORT=stdio node build/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "postgres",
+    "server"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
