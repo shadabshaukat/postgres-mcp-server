@@ -11,6 +11,7 @@ services:
       MCP_HTTP_PORT: ${MCP_HTTP_PORT:-8899}
       MCP_HTTP_PATH: ${MCP_HTTP_PATH:-/mcp}
       MCP_DB_MODE: ${MCP_DB_MODE:-restricted}
+      NODE_NO_WARNINGS: ${NODE_NO_WARNINGS:-1}
       PGSSLMODE: ${PGSSLMODE:-require}
       PGSSLREJECTUNAUTHORIZED: ${PGSSLREJECTUNAUTHORIZED:-true}
       # Optional cert material if needed:

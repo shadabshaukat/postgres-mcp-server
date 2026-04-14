@@ -64,6 +64,9 @@ Or use PG envs (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`).
 - `MCP_AUTO_REMAP_LOCALHOST=true|false` (default `true`)
   - If running inside Docker and connection host is `localhost`/`127.0.0.1`, rewrites host to `host.docker.internal` (or alias below).
 - `MCP_DOCKER_HOST_ALIAS` (default `host.docker.internal`)
+- `NODE_NO_WARNINGS=1` (default in Docker/compose examples)
+  - suppresses Node runtime warnings in container logs.
+  - set `NODE_NO_WARNINGS=0` if you want warnings visible.
 
 ### SSL
 
