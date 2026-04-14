@@ -3,14 +3,14 @@ services:
     build: .
     image: postgres-mcp-server:latest
     ports:
-      - "${MCP_HTTP_PORT:-8080}:${MCP_HTTP_PORT:-8080}"
+      - "${MCP_HTTP_PORT:-8899}:${MCP_HTTP_PORT:-8899}"
     environment:
-      POSTGRES_URL: ${POSTGRES_URL}
+      DATABASE_URI: ${DATABASE_URI:-${POSTGRES_URL}}
       MCP_TRANSPORT: ${MCP_TRANSPORT:-sse}
       MCP_HTTP_HOST: ${MCP_HTTP_HOST:-0.0.0.0}
-      MCP_HTTP_PORT: ${MCP_HTTP_PORT:-8080}
+      MCP_HTTP_PORT: ${MCP_HTTP_PORT:-8899}
       MCP_HTTP_PATH: ${MCP_HTTP_PATH:-/mcp}
-      MCP_DB_MODE: ${MCP_DB_MODE:-read-only}
+      MCP_DB_MODE: ${MCP_DB_MODE:-restricted}
       PGSSLMODE: ${PGSSLMODE:-require}
       PGSSLREJECTUNAUTHORIZED: ${PGSSLREJECTUNAUTHORIZED:-true}
       # Optional cert material if needed:
