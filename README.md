@@ -1,6 +1,6 @@
-# Postgres MCP Server (Rebuilt)
+# Postgres MCP Server (Shadab Mohammad)
 
-This project was rebuilt to follow a more proven Postgres-MCP style design:
+This project was built to follow a more Enterprise Postgres-MCP style design:
 
 - Clear **access modes**: `restricted` (safe/read-only oriented) and `unrestricted`
 - Clean **tool model** for schema/object discovery and SQL execution
@@ -84,7 +84,7 @@ Or use PG envs (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`).
 
 You can provide raw special characters in URI credentials, for example:
 
-`<db_password_with_special_chars>`
+`YourPWD1234##!`
 
 The server normalizes/encodes URI credentials internally before connecting.
 
@@ -100,29 +100,6 @@ Connection password is masked in logs (`******`).
 
 ---
 
-## Local Run
-
-Install and build:
-
-```bash
-npm install
-npm run build
-```
-
-Run SSE:
-
-```bash
-MCP_TRANSPORT=sse MCP_HTTP_PORT=8899 MCP_DB_MODE=restricted DATABASE_URI='postgres://<db_user>:<db_password>@<db_host>:5432/<db_name>?sslmode=require' node build/index.js
-```
-
-Run stdio:
-
-```bash
-MCP_TRANSPORT=stdio MCP_DB_MODE=restricted DATABASE_URI='postgres://<db_user>:<db_password>@<db_host>:5432/<db_name>?sslmode=require' node build/index.js
-```
-
----
-
 ## Docker Run (App in Docker, DB remote)
 
 > Architecture: MCP app runs in Docker, Postgres stays remote.
@@ -130,7 +107,7 @@ MCP_TRANSPORT=stdio MCP_DB_MODE=restricted DATABASE_URI='postgres://<db_user>:<d
 Build:
 
 ```bash
-docker build -t postgres-mcp-server:latest .
+docker build --no-cache -t postgres-mcp-server:latest .
 ```
 
 Run:
@@ -142,7 +119,19 @@ docker run --rm -p 8899:8899 \
   -e MCP_HTTP_PORT=8899 \
   -e MCP_HTTP_PATH=/mcp \
   -e MCP_DB_MODE=restricted \
-  -e DATABASE_URI='postgres://<db_user>:<db_password>@host.docker.internal:5432/<db_name>?sslmode=require' \
+  -e POSTGRES_URL='postgres://<db_user>:<db_password>@<db_host>:5432/<db_name>?sslmode=require' \
+  postgres-mcp-server:latest
+```
+
+eg:
+```bash
+docker run --rm -p 8899:8899 \
+  -e MCP_TRANSPORT=sse \
+  -e MCP_HTTP_HOST=0.0.0.0 \
+  -e MCP_HTTP_PORT=8899 \
+  -e MCP_HTTP_PATH=/mcp \
+  -e MCP_DB_MODE=restricted \
+  -e POSTGRES_URL='postgres://postgres:YourPWD1234##@localhost:5432/postgres?sslmode=require' \
   postgres-mcp-server:latest
 ```
 
@@ -164,9 +153,9 @@ not `localhost:5432`.
 
 ---
 
-## Client Config (Corrected for compatibility)
+## MCP Client Config 
 
-### Claude Desktop (recommended)
+### Claude Desktop 
 
 Claude Desktop commonly requires stdio-style MCP server definitions (not raw `url`).
 
@@ -229,6 +218,28 @@ Use:
 ```bash
 cp docker-compose.example.yml docker-compose.yml
 docker compose up --build
+```
+
+---
+## Local Run
+
+Install and build:
+
+```bash
+npm install
+npm run build
+```
+
+Run SSE:
+
+```bash
+MCP_TRANSPORT=sse MCP_HTTP_PORT=8899 MCP_DB_MODE=restricted DATABASE_URI='postgres://<db_user>:<db_password>@<db_host>:5432/<db_name>?sslmode=require' node build/index.js
+```
+
+Run stdio:
+
+```bash
+MCP_TRANSPORT=stdio MCP_DB_MODE=restricted DATABASE_URI='postgres://<db_user>:<db_password>@<db_host>:5432/<db_name>?sslmode=require' node build/index.js
 ```
 
 ---
