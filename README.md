@@ -22,6 +22,11 @@ This project was built to follow a more Enterprise Postgres-MCP style design:
 - Better startup/runtime diagnostics for DB connectivity
 - Docker-focused remote DB usage (including host SSH tunnel pattern)
 
+## Tested On
+- OCI PostgreSQL 14-17
+- Amazon RDS PostgreSQL 16
+- Amazon Aurora PostgreSQL 17
+
 ---
 
 ## Features
