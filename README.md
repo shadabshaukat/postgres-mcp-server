@@ -1,5 +1,13 @@
 # Postgres MCP Server
 
+[![CI](https://img.shields.io/github/actions/workflow/status/shadabshaukat/postgres-mcp-server/ci.yml?branch=main&style=flat-square&label=CI&logo=githubactions&logoColor=white)](https://github.com/shadabshaukat/postgres-mcp-server/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-2ea44f?style=flat-square)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![MCP](https://img.shields.io/badge/MCP-stdio%20%7C%20HTTP-6D4AFF?style=flat-square)](https://modelcontextprotocol.io/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Podman](https://img.shields.io/badge/Podman-tested-892CA0?style=flat-square&logo=podman&logoColor=white)](https://podman.io/)
+
 A secure PostgreSQL Model Context Protocol server with bounded SQL execution, deterministic query tuning, workload analysis, scored database monitoring, and Prometheus metrics.
 
 ## Quick start: Docker or Podman
