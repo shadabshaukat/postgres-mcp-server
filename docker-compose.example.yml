@@ -3,15 +3,20 @@ services:
     build: .
     image: postgres-mcp-server:latest
     ports:
-      - "${MCP_HTTP_PORT:-8899}:${MCP_HTTP_PORT:-8899}"
+      - "127.0.0.1:${MCP_HTTP_PORT:-8899}:${MCP_HTTP_PORT:-8899}"
     environment:
       DATABASE_URI: ${DATABASE_URI:-${POSTGRES_URL}}
-      MCP_TRANSPORT: ${MCP_TRANSPORT:-sse}
+      MCP_TRANSPORT: ${MCP_TRANSPORT:-http}
       MCP_HTTP_HOST: ${MCP_HTTP_HOST:-0.0.0.0}
       MCP_HTTP_PORT: ${MCP_HTTP_PORT:-8899}
       MCP_HTTP_PATH: ${MCP_HTTP_PATH:-/mcp}
       MCP_DB_MODE: ${MCP_DB_MODE:-restricted}
-      NODE_NO_WARNINGS: ${NODE_NO_WARNINGS:-1}
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?Set MCP_AUTH_TOKEN}
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-http://localhost:8899,http://127.0.0.1:8899}
+      MCP_STATEMENT_TIMEOUT_MS: ${MCP_STATEMENT_TIMEOUT_MS:-15000}
+      MCP_MAX_ROWS: ${MCP_MAX_ROWS:-1000}
+      MCP_MAX_RESULT_BYTES: ${MCP_MAX_RESULT_BYTES:-2000000}
       PGSSLMODE: ${PGSSLMODE:-require}
       PGSSLREJECTUNAUTHORIZED: ${PGSSLREJECTUNAUTHORIZED:-true}
       # Optional cert material if needed:
@@ -20,5 +25,9 @@ services:
       # PGSSLKEY_PATH: /certs/client.key
     # volumes:
     #   - ./certs:/certs:ro
-    stdin_open: false
-    tty: false
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped

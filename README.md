@@ -1,389 +1,195 @@
-# Postgres MCP Server 
+# Postgres MCP Server
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/license/apache-2-0)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![npm version](https://img.shields.io/npm/v/postgres-mcp-server)](https://www.npmjs.com/package/postgres-mcp-server)
-[![Build](https://img.shields.io/github/actions/workflow/status/shadabshaukat/postgres-mcp-server/<workflow-file>.yml?branch=main)](https://github.com/shadabshaukat/postgres-mcp-server/actions)
-[![Last Commit](https://img.shields.io/github/last-commit/shadabshaukat/postgres-mcp-server)](https://github.com/shadabshaukat/postgres-mcp-server/commits/main)
-[![Docker Pulls](https://img.shields.io/docker/pulls/9382382888/postgres-mcp-server)](https://hub.docker.com/r/9382382888/postgres-mcp-server)
-[![Issues](https://img.shields.io/github/issues/shadabshaukat/postgres-mcp-server)](https://github.com/shadabshaukat/postgres-mcp-server/issues)
-[![Pull Requests](https://img.shields.io/github/issues-pr/shadabshaukat/postgres-mcp-server)](https://github.com/shadabshaukat/postgres-mcp-server/pulls)
-[![Stars](https://img.shields.io/github/stars/shadabshaukat/postgres-mcp-server?style=social)](https://github.com/shadabshaukat/postgres-mcp-server/stargazers)
-[![Forks](https://img.shields.io/github/forks/shadabshaukat/postgres-mcp-server?style=social)](https://github.com/shadabshaukat/postgres-mcp-server/network/members)
+A secure, diagnostic-first Model Context Protocol server for PostgreSQL. It exposes bounded SQL execution, catalog resources, execution-plan analysis, slow-query statistics, and health signals over stdio or Streamable HTTP.
 
-<img width="1536" height="1024" alt="Building a server with Postgres power" src="https://github.com/user-attachments/assets/5af3c36b-7a7e-4c40-aa9b-da074205a2a2" />
+## Security model
 
+`restricted` is the default mode. Every user query runs inside a PostgreSQL `READ ONLY` transaction with server-controlled statement, lock, row, and response-size limits. SQL inspection provides early feedback, while PostgreSQL remains the enforcement boundary.
 
-This project was built to follow a more Enterprise Postgres-MCP style design:
+Streamable HTTP defaults to loopback. A non-loopback listener fails startup unless a bearer token and explicit allowed hosts are configured. Origin validation, request-body limits, session capacity, idle expiration, and DELETE cleanup are enabled.
 
-- Clear **access modes**: `restricted` (safe/read-only oriented) and `unrestricted`
-- Clean **tool model** for schema/object discovery and SQL execution
-- Stable **dual transport** support: `stdio` and Streamable HTTP (`sse`)
-- Better startup/runtime diagnostics for DB connectivity
-- Docker-focused remote DB usage (including host SSH tunnel pattern)
+Important boundaries:
 
-## Tested On
-- OCI PostgreSQL 
-- Amazon RDS PostgreSQL 
-- Amazon Aurora PostgreSQL 
+- Use a dedicated PostgreSQL role with only the privileges the MCP client needs.
+- `MCP_DB_MODE=unrestricted` permits writes and should be enabled only for a tightly controlled role and endpoint.
+- `EXPLAIN ANALYZE` executes a query. It is disabled unless `MCP_ALLOW_EXPLAIN_ANALYZE=true`, accepts query statements only, and still runs in a read-only transaction.
+- Static bearer authentication is suitable for local and private-network deployments. Internet-facing deployments should terminate TLS and enforce an OAuth-aware identity layer in front of the server.
 
----
+## MCP surface
 
-## Features
+| Tool | Purpose |
+| --- | --- |
+| `server_info` | Server version, database identity, safeguards, limits, and pool status |
+| `list_schemas` | Schemas, owners, and current-user privileges |
+| `list_objects` | Tables, views, materialized views, sequences, functions, indexes, and extensions |
+| `get_object_details` | Columns, constraints, indexes, statistics, and function definitions |
+| `list_extensions` | Installed PostgreSQL extensions |
+| `execute_sql` | One bounded, parameterized SQL statement |
+| `explain_query` | PostgreSQL `EXPLAIN (FORMAT JSON)` with optional gated analysis |
+| `diagnose_query` | Deterministic plan findings and advisory index candidates |
+| `list_slow_queries` | `pg_stat_statements` execution and I/O rankings |
+| `database_health` | Connections, cache, locks, temporary I/O, and maintenance signals |
 
-### Tools
+Catalog context is also available through MCP resources:
 
-1. `server_info`
-2. `list_schemas`
-3. `list_objects`
-4. `get_object_details`
-5. `list_extensions`
-6. `execute_sql`
+- `postgres://catalog`
+- `postgres://catalog/schema/{schema}/{objectType}`
+- `postgres://catalog/object/{schema}/{objectType}/{objectName}`
 
-### Access modes
+Tool results include both `structuredContent` and a JSON text representation for client compatibility.
 
-- `restricted` (default):
-  - allows only safe read-style SQL (`SELECT`, `WITH`, `SHOW`, `EXPLAIN`)
-  - blocks obvious unsafe keywords (`commit`, `rollback`, `begin`, `drop`, `alter`, `create`, `copy`)
-  - enforces single-statement behavior
-  - applies bounded row limit wrapping for `SELECT`/`WITH`
+## Requirements
 
-- `unrestricted`:
-  - passes SQL through to Postgres directly
+- Node.js 20 or newer
+- PostgreSQL 14 or newer
+- Podman for the provided local end-to-end test harness
 
-### Transport modes
-
-- `stdio` (default if not specified)
-- `sse` (Streamable HTTP endpoint, default path `/mcp`)
-
----
-
-## Docker Run (App in Docker, DB remote)
-
-Architecture: MCP app runs in Docker, Postgres stays remote.
-
-### Git:
+## Install and build
 
 ```bash
-git clone https://github.com/shadabshaukat/postgres-mcp-server.git && cd postgres-mcp-server/
-```
-
-### Build:
-
-```bash
-docker build --no-cache -t postgres-mcp-server:latest .
-```
-
-### Run:
-
-```bash
-docker run --rm -p 8899:8899 \
-  -e MCP_TRANSPORT=sse \
-  -e MCP_HTTP_HOST=0.0.0.0 \
-  -e MCP_HTTP_PORT=8899 \
-  -e MCP_HTTP_PATH=/mcp \
-  -e MCP_DB_MODE=restricted \
-  -e POSTGRES_URL='postgres://<db_user>:<db_password>@<db_host>:5432/<db_name>?sslmode=require' \
-  postgres-mcp-server:latest
-```
-
-eg:
-```bash
-docker run --rm -p 8899:8899 \
-  -e MCP_TRANSPORT=sse \
-  -e MCP_HTTP_HOST=0.0.0.0 \
-  -e MCP_HTTP_PORT=8899 \
-  -e MCP_HTTP_PATH=/mcp \
-  -e MCP_DB_MODE=restricted \
-  -e POSTGRES_URL='postgres://postgres:YourPWD1234##@localhost:5432/postgres?sslmode=require' \
-  postgres-mcp-server:latest
-```
-
----
-
-### Alternative - Pull latest image from Docker hub 
-
-#### Docker auto-selects the right architecture
-
-Default (auto-detect arch)
-```bash
-docker pull 9382382888/postgres-mcp-server:latest
-```
-
-#### Pull a specific architecture explicitly
-
-AMD64
-```bash
-docker pull --platform linux/amd64 9382382888/postgres-mcp-server:latest
-```
-
-ARM64
-```bash
-docker pull --platform linux/arm64 9382382888/postgres-mcp-server:latest
-```
-
-#### Verify what was pulled 
-```bash
-docker image inspect 9382382888/postgres-mcp-server:latest --format '{{.Architecture}}/{{.Os}}'
-```
-
----
-
-## Remote DB via SSH Tunnel (host machine)
-
-If you forward remote DB to host `localhost:5432`:
-
-```bash
-ssh -fNT -L 5432:<remote_db_private_ip>:5432 <ssh_user>@<ssh_bastion_host> -i /absolute/path/to/private_key
-```
-
-Then from Docker app, use:
-
-- `host.docker.internal:5432`
-
-not `localhost:5432`.
-
----
-
-## MCP Client Config 
-
-### Claude Desktop 
-
-Claude Desktop commonly requires stdio-style MCP server definitions (not raw `url`).
-
-Use:
-
-```json
-{
-  "mcpServers": {
-    "postgres-sse": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "http://127.0.0.1:8899/mcp"
-      ]
-    }
-  }
-}
-```
-
-### VS Code Cline
-
-#### Option A: Legacy SSE mode (most compatible)
-
-```json
-{
-  "mcpServers": {
-    "postgres-sse": {
-      "type": "sse",
-      "url": "http://127.0.0.1:8899/sse",
-      "disabled": false,
-      "autoApprove": []
-    }
-  }
-}
-```
-
-#### Option B: Streamable HTTP mode (newer clients)
-
-```json
-{
-  "mcpServers": {
-    "postgres-sse": {
-      "url": "http://127.0.0.1:8899/mcp",
-      "disabled": false,
-      "autoApprove": []
-    }
-  }
-}
-```
-
-> This server now supports **both** endpoints:
-> - Streamable HTTP: `/mcp`
-> - Legacy SSE: `/sse` with message POST endpoint `/messages`
-
----
-
-## Docker Compose
-
-```bash
-cp docker-compose.example.yml docker-compose.yml
-docker compose up --build
-```
-
----
-## Local Run
-
-Install and build:
-
-```bash
-npm install
+npm ci
+npm run check
+npm run test:unit
 npm run build
 ```
 
-Run SSE:
+## Run over stdio
 
 ```bash
-MCP_TRANSPORT=sse MCP_HTTP_PORT=8899 MCP_DB_MODE=restricted DATABASE_URI='postgres://<db_user>:<db_password>@<db_host>:5432/<db_name>?sslmode=require' node build/index.js
+DATABASE_URI='postgres://mcp_reader:password@127.0.0.1:5432/app?sslmode=disable' \
+MCP_TRANSPORT=stdio \
+MCP_DB_MODE=restricted \
+node build/index.js
 ```
 
-Run stdio:
+Example MCP client configuration:
 
-```bash
-MCP_TRANSPORT=stdio MCP_DB_MODE=restricted DATABASE_URI='postgres://<db_user>:<db_password>@<db_host>:5432/<db_name>?sslmode=require' node build/index.js
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "node",
+      "args": ["/absolute/path/postgres-mcp-server/build/index.js"],
+      "env": {
+        "DATABASE_URI": "postgres://mcp_reader:password@127.0.0.1:5432/app?sslmode=disable",
+        "MCP_DB_MODE": "restricted"
+      }
+    }
+  }
+}
 ```
 
----
+## Run over Streamable HTTP
 
-## Troubleshooting
-
-### 1) `Could not attach` / HTTP 500 from bridge
-
-Check:
-
-- server log shows DB connected successfully
-- server log shows SSE endpoint at `/mcp`
-- client URL is exactly `http://127.0.0.1:8899/mcp`
-- no port collision on `8899`
-
-### 1b) `SSE error: Non-200 status code (400)` in Cline
-
-Usually means the client is using legacy SSE protocol against `/mcp`.
-
-Fix by using Cline legacy SSE config:
-
-- `"type": "sse"`
-- `"url": "http://127.0.0.1:8899/sse"`
-
-or switch to a newer client build that supports Streamable HTTP `/mcp`.
-
-### 1c) Claude says config is invalid and skips server
-
-Claude Desktop likely rejected `url` style config.
-
-Use stdio-style bridge config (`command` + `args`) with `mcp-remote`.
-
-### 1d) Errors like `Server not initialized` / `Server already initialized` / `Mcp-Session-Id header is required`
-
-These were due to session-routing behavior in older builds.
-
-Fix:
-
-- rebuild image from latest code:
+Loopback development:
 
 ```bash
-docker build --no-cache -t postgres-mcp-server:latest .
+DATABASE_URI='postgres://mcp_reader:password@127.0.0.1:5432/app?sslmode=disable' \
+MCP_TRANSPORT=http \
+MCP_HTTP_HOST=127.0.0.1 \
+MCP_AUTH_TOKEN='replace-with-a-long-random-token' \
+node build/index.js
 ```
 
-- restart container and reconnect Claude/Cline.
+The MCP endpoint is `http://127.0.0.1:8899/mcp`. Health endpoints are `/healthz` and `/readyz`.
 
-### 2) Docker cannot reach Postgres
-
-- use `host.docker.internal` for host-side tunnel endpoints
-- ensure tunnel is active before starting container
-
-### 3) `The server does not support SSL connections`
-
-This means your target Postgres endpoint is plain TCP (non-SSL) while URI requested SSL.
-
-Options:
-
-- Use `?sslmode=disable` directly in `DATABASE_URI`, or
-- Keep current URI and rely on automatic one-time fallback (enabled by default):
-  - `MCP_SSL_FALLBACK_TO_DISABLE=true`
-
-If you want strict behavior (no fallback), set:
+A non-loopback listener also requires explicit host policy:
 
 ```bash
--e MCP_SSL_FALLBACK_TO_DISABLE=false
+MCP_TRANSPORT=http \
+MCP_HTTP_HOST=0.0.0.0 \
+MCP_AUTH_TOKEN='replace-with-a-long-random-token' \
+MCP_ALLOWED_HOSTS='db-mcp.example.internal,127.0.0.1' \
+MCP_ALLOWED_ORIGINS='https://mcp-client.example.internal' \
+node build/index.js
 ```
 
-### 4) Port already allocated
+## Podman
 
-Either stop process using 8899 or run with another port:
-
-```bash
-docker run --rm -p 9900:8899 ...
-```
-
-Then client URL becomes:
-
-- `http://127.0.0.1:9900/mcp`
-
----
-
-## Scripts
+Build and run the server image:
 
 ```bash
+npm ci
 npm run build
-npm run dev
-npm run start
-npm run start:sse
-npm run start:stdio
+podman build -t postgres-mcp-server:latest .
+podman run --rm -p 127.0.0.1:8899:8899 \
+  -e MCP_TRANSPORT=http \
+  -e MCP_HTTP_HOST=0.0.0.0 \
+  -e MCP_AUTH_TOKEN='replace-with-a-long-random-token' \
+  -e MCP_ALLOWED_HOSTS='localhost,127.0.0.1' \
+  -e DATABASE_URI='postgres://mcp_reader:password@host.containers.internal:5432/app?sslmode=disable' \
+  postgres-mcp-server:latest
 ```
 
----
+Run the full test suite against an ephemeral PostgreSQL 17 container:
 
-# Miscellaneous Information
+```bash
+podman machine start
+npm run test:e2e:podman
+```
 
-## Environment Variables
+The harness starts PostgreSQL with `pg_stat_statements`, builds the server, runs stdio and authenticated HTTP MCP tests, and removes the container afterward.
+Set `POSTGRES_TEST_IMAGE` or `POSTGRES_TEST_PORT` to override its image or host port.
 
-### Connection
+See the [Podman MCP-to-Postgres E2E runbook](docs/podman-e2e-runbook.md) for one-time VM setup, all eight test scenarios, expected evidence, cleanup behavior, and troubleshooting.
 
-Use one of:
+## Query diagnostics
 
-- `DATABASE_URI` (preferred)
-- `POSTGRES_URL`
-- `DATABASE_URL`
+`explain_query` returns the PostgreSQL JSON plan and a normalized summary. `diagnose_query` walks the plan tree and reports signals such as:
 
-Or use PG envs (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`).
+- large sequential scans
+- row-estimate mismatches
+- rows discarded by filters
+- disk-backed sorts and temporary I/O
+- high-volume nested loops
+- advisory index columns inferred from scan filters
 
-### MCP runtime
+Index candidates are suggestions, not DDL. Validate them against representative data, write overhead, existing indexes, and preferably hypothetical plans through HypoPG.
 
-- `MCP_TRANSPORT=stdio|sse`
-- `MCP_DB_MODE=restricted|unrestricted`
-- `MCP_HTTP_HOST` (default `0.0.0.0`)
-- `MCP_HTTP_PORT` (default `8899`)
-- `MCP_HTTP_PATH` (default `/mcp`)
+`list_slow_queries` requires `pg_stat_statements` to be preloaded and installed:
 
-### Helpful behavior switches
+```sql
+CREATE EXTENSION pg_stat_statements;
+```
 
-- `MCP_AUTO_REMAP_LOCALHOST=true|false` (default `true`)
-  - If running inside Docker and connection host is `localhost`/`127.0.0.1`, rewrites host to `host.docker.internal` (or alias below).
-- `MCP_DOCKER_HOST_ALIAS` (default `host.docker.internal`)
-- `NODE_NO_WARNINGS=1` (default in Docker/compose examples)
-  - suppresses Node runtime warnings in container logs.
-  - set `NODE_NO_WARNINGS=0` if you want warnings visible.
+## Configuration
 
-### SSL
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `DATABASE_URI` / `POSTGRES_URL` / `DATABASE_URL` | PG environment | PostgreSQL connection URI |
+| `MCP_DB_MODE` | `restricted` | `restricted` or `unrestricted` |
+| `MCP_TRANSPORT` | `stdio` | `stdio`, `http`, or legacy alias `sse` |
+| `MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address |
+| `MCP_HTTP_PORT` | `8899` | HTTP port |
+| `MCP_AUTH_TOKEN` | unset | Static bearer token |
+| `MCP_ALLOWED_HOSTS` | loopback hosts | Comma-separated Host allowlist |
+| `MCP_ALLOWED_ORIGINS` | loopback origins | Comma-separated Origin allowlist |
+| `MCP_ENABLE_LEGACY_SSE` | `false` | Enable deprecated `/sse` and `/messages` transport |
+| `MCP_STATEMENT_TIMEOUT_MS` | `15000` | PostgreSQL statement timeout |
+| `MCP_LOCK_TIMEOUT_MS` | `3000` | PostgreSQL lock timeout |
+| `MCP_QUERY_TIMEOUT_MS` | `20000` | Client and idle transaction timeout |
+| `MCP_MAX_ROWS` | `1000` | Maximum requested rows |
+| `MCP_MAX_RESULT_BYTES` | `2000000` | Maximum serialized result size |
+| `MCP_MAX_BODY_BYTES` | `1000000` | Maximum HTTP request size |
+| `MCP_REQUEST_TIMEOUT_MS` | `60000` | Maximum time to receive an HTTP request |
+| `MCP_MAX_SESSIONS` | `100` | Maximum concurrent HTTP sessions |
+| `MCP_SESSION_TTL_MS` | `1800000` | Idle HTTP session lifetime |
+| `MCP_ALLOW_EXPLAIN_ANALYZE` | `false` | Permit query execution during diagnostics |
+| `MCP_SSL_FALLBACK_TO_DISABLE` | `false` | Explicitly permit TLS downgrade after SSL rejection |
 
-- `PGSSLMODE`
-- `PGSSLREJECTUNAUTHORIZED`
-- `PGSSLROOTCERT_PATH` / `PGSSLROOTCERT`
-- `PGSSLCERT_PATH` / `PGSSLCERT`
-- `PGSSLKEY_PATH` / `PGSSLKEY`
-- `MCP_SSL_FALLBACK_TO_DISABLE=true|false` (default `true`)
-  - If server detects `does not support SSL connections`, it retries once with `sslmode=disable`.
+Standard `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, and TLS certificate variables are supported by `pg`. Percent-encode reserved characters in connection URI credentials.
 
----
+## Development verification
 
-## Special Character Passwords 
+```bash
+npm run check
+npm run test:unit
+npm run test:e2e:podman
+npm pack --dry-run
+```
 
-You can provide raw special characters in URI credentials, for example:
+CI repeats type checks, unit tests, container-backed MCP tests, dependency audit, package inspection, and a rootless runtime image build.
 
-`YourPWD1234##!`
+## License
 
-The server normalizes/encodes URI credentials internally before connecting.
-
----
-
-## Startup Log Behavior 
-
-When DB connection succeeds, container/console logs include a detailed line like:
-
-- `Database connected successfully | db=... | user=... | host=... | port=... | ...`
-
-Connection password is masked in logs (`******`).
-
----
+Apache-2.0. See [LICENSE](LICENSE).
