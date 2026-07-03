@@ -1,7 +1,7 @@
 {
   "name": "postgres-mcp-server",
-  "version": "0.2.0",
-  "description": "Secure, diagnostic-first MCP server for PostgreSQL",
+  "version": "0.3.0",
+  "description": "Secure PostgreSQL MCP server with query tuning and production monitoring",
   "type": "module",
   "main": "build/index.js",
   "bin": {
@@ -24,7 +24,9 @@
   "keywords": [
     "mcp",
     "postgres",
-    "server"
+    "server",
+    "monitoring",
+    "query-performance"
   ],
   "license": "Apache-2.0",
   "engines": {
@@ -32,6 +34,7 @@
   },
   "files": [
     "build",
+    "docs",
     "README.md",
     "LICENSE"
   ],

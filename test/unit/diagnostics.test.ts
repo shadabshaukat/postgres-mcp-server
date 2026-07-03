@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { analyzePlan, buildExplainSql, parseExplainDocument } from '../../src/diagnostics.js';
+import {
+  analyzePlan,
+  buildExplainSql,
+  comparePlans,
+  parseExplainDocument,
+  planFingerprint,
+} from '../../src/diagnostics.js';
 
 test('builds safe JSON EXPLAIN statements', () => {
   const planned = buildExplainSql('SELECT * FROM accounts', false);
@@ -57,4 +63,56 @@ test('reports disk-backed sorts as critical', () => {
       (finding) => finding.code === 'disk_sort' && finding.severity === 'critical'
     )
   );
+});
+
+test('normalizes literals in structural plan fingerprints', () => {
+  const first = {
+    Plan: {
+      'Node Type': 'Index Scan',
+      Schema: 'public',
+      'Relation Name': 'accounts',
+      'Index Name': 'accounts_pkey',
+      'Index Cond': '(id = 1)',
+    },
+  };
+  const second = {
+    Plan: {
+      'Node Type': 'Index Scan',
+      Schema: 'public',
+      'Relation Name': 'accounts',
+      'Index Name': 'accounts_pkey',
+      'Index Cond': '(id = 900)',
+    },
+  };
+  assert.equal(planFingerprint(first), planFingerprint(second));
+});
+
+test('compares plan structure, cost, and diagnostic risk', () => {
+  const comparison = comparePlans(
+    {
+      Plan: {
+        'Node Type': 'Seq Scan',
+        Schema: 'public',
+        'Relation Name': 'events',
+        'Plan Rows': 20_000,
+        'Total Cost': 1000,
+        Filter: '(account_id = 10)',
+      },
+    },
+    {
+      Plan: {
+        'Node Type': 'Index Scan',
+        Schema: 'public',
+        'Relation Name': 'events',
+        'Index Name': 'events_account_id_idx',
+        'Plan Rows': 200,
+        'Total Cost': 100,
+        'Index Cond': '(account_id = 10)',
+      },
+    }
+  );
+  assert.equal(comparison.verdict, 'improved');
+  assert.equal(comparison.structuralChange, true);
+  assert.equal(comparison.deltas.totalCostPercent, -90);
+  assert.ok(comparison.nodeTypeChanges.some((change) => change.nodeType === 'Seq Scan'));
 });

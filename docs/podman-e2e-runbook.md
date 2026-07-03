@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This runbook verifies the Postgres MCP server through real MCP clients against an ephemeral PostgreSQL 17 database. The test exercises both stdio and Streamable HTTP transports, database safety boundaries, query diagnostics, telemetry, and connection cleanup.
+This runbook verifies the Postgres MCP server through real MCP clients against an ephemeral PostgreSQL 17 database. The test exercises stdio and Streamable HTTP, database safety boundaries, plan comparison, index advice, workload statistics, scored monitoring, protected Prometheus metrics, and connection cleanup.
 
 The Podman VM runs PostgreSQL. The Node.js test runner starts the MCP server processes on the host and communicates with PostgreSQL through a loopback-only port.
 
@@ -94,14 +94,14 @@ The suite drops and recreates `mcp_test` before testing, then drops it during te
 
 | # | Scenario | Required evidence |
 | --- | --- | --- |
-| 1 | MCP discovery and resources | Expected tools are advertised, `server_info` reports version `0.2.0`, and `postgres://catalog` includes `mcp_test`. |
+| 1 | MCP discovery and resources | Tuning and monitoring tools are advertised, `server_info` reports version `0.3.0`, and `postgres://catalog` includes `mcp_test`. |
 | 2 | Parameterized bounded reads | A parameterized account query returns five deterministic rows and reports truncation. |
 | 3 | Restricted-mode mutation defense | `EXPLAIN ANALYZE DELETE` and `nextval(...)` are rejected; row count and sequence state remain unchanged. |
 | 4 | Pooled connection cleanup | A session advisory lock is released before the pooled connection is reused. |
 | 5 | PostgreSQL statement timeout | `pg_sleep(2)` is cancelled by the 300 ms server-side timeout before the 1.5 second query deadline. |
-| 6 | Explain and query diagnosis | JSON plan analysis succeeds and identifies a deterministic `large_sequential_scan` finding. |
-| 7 | Statistics and health | `list_slow_queries` reads `pg_stat_statements`, and `database_health` returns `healthy` or `degraded`. |
-| 8 | Streamable HTTP security | Missing bearer authentication returns `401`, an untrusted Origin returns `403`, and an authenticated allowed client completes MCP discovery. |
+| 6 | Tuning workflow | JSON diagnosis identifies a deterministic sequential scan, plan comparison detects structural change, and the index advisor returns advisory concurrent-index SQL while reporting HypoPG availability. |
+| 7 | Workload and database monitoring | Expanded `pg_stat_statements` fields, scored health, PostgreSQL 17 `pg_stat_io`, checkpointer data, and the compatibility health alias all return structured results. |
+| 8 | HTTP security and Prometheus | Missing bearer authentication returns `401`, an untrusted Origin returns `403`, authenticated metrics return Prometheus text, and an allowed client completes MCP discovery. |
 
 ## Security configuration exercised
 
@@ -118,6 +118,7 @@ The stdio server uses the following test limits:
 | `PGSSLMODE` | `disable` for the loopback-only ephemeral database |
 
 The HTTP scenario additionally enables bearer authentication, explicit Host allowlisting, and explicit Origin allowlisting on a dynamically allocated loopback port.
+It enables `MCP_ENABLE_METRICS=true` and verifies that `/metrics` rejects unauthenticated access before returning monitoring metrics to the allowed client.
 
 ## Expected result
 

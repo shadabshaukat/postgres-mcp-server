@@ -218,6 +218,76 @@ const registerTools = (server: McpServer, service: PostgresService): void => {
   );
 
   server.registerTool(
+    'compare_query_plans',
+    {
+      title: 'Compare PostgreSQL Query Plans',
+      description:
+        'Compare baseline and candidate SQL using structural plan fingerprints, planner cost, execution time, node changes, and diagnostic risk.',
+      inputSchema: z.object({
+        baselineSql: z.string().min(1).max(500_000),
+        baselineParams: sqlParamsSchema,
+        candidateSql: z.string().min(1).max(500_000),
+        candidateParams: sqlParamsSchema,
+        analyze: z.boolean().default(false),
+      }),
+      outputSchema: looseOutputSchema,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ baselineSql, baselineParams, candidateSql, candidateParams, analyze }, extra) => {
+      try {
+        return jsonResult(
+          await service.compareQueryPlans(
+            {
+              baselineSql,
+              baselineParams: baselineParams as SqlParameter[] | undefined,
+              candidateSql,
+              candidateParams: candidateParams as SqlParameter[] | undefined,
+              analyze,
+            },
+            extra.signal
+          )
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'recommend_indexes',
+    {
+      title: 'Recommend PostgreSQL Indexes',
+      description:
+        'Generate schema-aware advisory index candidates, detect existing coverage, and optionally validate planner benefit with HypoPG.',
+      inputSchema: z.object({
+        sql: z.string().min(1).max(500_000),
+        params: sqlParamsSchema,
+        maxCandidates: z.number().int().min(1).max(10).default(5),
+        validateWithHypopg: z.boolean().default(true),
+      }),
+      outputSchema: looseOutputSchema,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ sql, params, maxCandidates, validateWithHypopg }, extra) => {
+      try {
+        return jsonResult(
+          await service.recommendIndexes(
+            {
+              sql,
+              params: params as SqlParameter[] | undefined,
+              maxCandidates,
+              validateWithHypopg,
+            },
+            extra.signal
+          )
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  server.registerTool(
     'list_slow_queries',
     {
       title: 'List Slow PostgreSQL Queries',
@@ -225,7 +295,16 @@ const registerTools = (server: McpServer, service: PostgresService): void => {
       inputSchema: z.object({
         limit: z.number().int().min(1).max(100).default(20),
         orderBy: z
-          .enum(['total_exec_time', 'mean_exec_time', 'calls', 'shared_blks_read'])
+          .enum([
+            'total_exec_time',
+            'mean_exec_time',
+            'max_exec_time',
+            'stddev_exec_time',
+            'calls',
+            'shared_blks_read',
+            'temp_blks_written',
+            'wal_bytes',
+          ])
           .default('total_exec_time'),
       }),
       outputSchema: looseOutputSchema,
@@ -241,11 +320,29 @@ const registerTools = (server: McpServer, service: PostgresService): void => {
   );
 
   server.registerTool(
+    'monitor_database',
+    {
+      title: 'Monitor PostgreSQL Database',
+      description:
+        'Return scored health findings, blockers, long transactions, maintenance pressure, replication, WAL, checkpoints, I/O, archiver, and MCP pool signals.',
+      outputSchema: looseOutputSchema,
+      annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async () => {
+      try {
+        return jsonResult(await service.monitorDatabase());
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
+  );
+
+  server.registerTool(
     'database_health',
     {
       title: 'PostgreSQL Health Snapshot',
       description:
-        'Return connection, cache, transaction, lock, temporary-I/O, and table-maintenance health signals.',
+        'Compatibility alias for the scored monitor_database health and observability snapshot.',
       outputSchema: looseOutputSchema,
       annotations: { readOnlyHint: true, idempotentHint: false, openWorldHint: false },
     },
@@ -344,7 +441,7 @@ export const createMcpServer = (service: PostgresService): McpServer => {
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
       instructions:
-        'Use catalog resources for schema context, execute_sql for bounded parameterized queries, and diagnose_query for deterministic plan analysis. Index candidates are advisory and must be validated before applying.',
+        'Use catalog resources for schema context, execute_sql for bounded parameterized queries, diagnose_query and compare_query_plans for deterministic tuning, recommend_indexes for advisory what-if analysis, and monitor_database for scored operational health. Never apply returned index DDL without review.',
     }
   );
   registerTools(server, service);

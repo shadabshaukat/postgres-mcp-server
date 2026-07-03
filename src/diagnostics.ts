@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export type FindingSeverity = 'info' | 'warning' | 'critical';
 
 export interface DiagnosticFinding {
@@ -42,6 +44,27 @@ export interface PlanAnalysis {
   findings: DiagnosticFinding[];
   indexCandidates: IndexCandidate[];
   nodes: PlanNodeSummary[];
+}
+
+export interface PlanComparison {
+  verdict: 'equivalent' | 'improved' | 'regressed' | 'changed';
+  baselineFingerprint: string;
+  candidateFingerprint: string;
+  structuralChange: boolean;
+  deltas: {
+    totalCostPercent: number | null;
+    planningTimePercent: number | null;
+    executionTimePercent: number | null;
+    riskScore: number;
+    nodeCount: number;
+  };
+  nodeTypeChanges: Array<{
+    nodeType: string;
+    baseline: number;
+    candidate: number;
+    delta: number;
+  }>;
+  signals: string[];
 }
 
 type PlanNode = Record<string, unknown> & { Plans?: PlanNode[] };
@@ -243,5 +266,114 @@ export const analyzePlan = (document: ExplainDocument): PlanAnalysis => {
     findings,
     indexCandidates: [...uniqueCandidates.values()],
     nodes,
+  };
+};
+
+const normalizeExpression = (value: unknown): string | undefined => {
+  const expression = asString(value);
+  if (!expression) return undefined;
+  return expression
+    .replace(/'(?:''|[^'])*'/g, '?')
+    .replace(/\b\d+(?:\.\d+)?\b/g, '?')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const structuralPlanNode = (node: PlanNode): Record<string, unknown> => ({
+  nodeType: asString(node['Node Type']) ?? 'Unknown',
+  relation: relationLabel(node) ?? null,
+  index: asString(node['Index Name']) ?? null,
+  joinType: asString(node['Join Type']) ?? null,
+  strategy: asString(node.Strategy) ?? null,
+  scanDirection: asString(node['Scan Direction']) ?? null,
+  indexCondition: normalizeExpression(node['Index Cond']) ?? null,
+  filter: normalizeExpression(node.Filter) ?? null,
+  hashCondition: normalizeExpression(node['Hash Cond']) ?? null,
+  mergeCondition: normalizeExpression(node['Merge Cond']) ?? null,
+  children: (Array.isArray(node.Plans) ? node.Plans : []).map(structuralPlanNode),
+});
+
+export const planFingerprint = (document: ExplainDocument): string => {
+  if (!document.Plan) throw new Error('EXPLAIN document does not contain a root plan.');
+  return createHash('sha256').update(JSON.stringify(structuralPlanNode(document.Plan))).digest('hex');
+};
+
+const percentChange = (baseline: number | null, candidate: number | null): number | null => {
+  if (baseline === null || candidate === null || baseline === 0) return null;
+  return Number((((candidate - baseline) / baseline) * 100).toFixed(2));
+};
+
+const countNodeTypes = (analysis: PlanAnalysis): Map<string, number> => {
+  const counts = new Map<string, number>();
+  for (const node of analysis.nodes) counts.set(node.nodeType, (counts.get(node.nodeType) ?? 0) + 1);
+  return counts;
+};
+
+export const comparePlans = (
+  baselineDocument: ExplainDocument,
+  candidateDocument: ExplainDocument
+): PlanComparison => {
+  const baseline = analyzePlan(baselineDocument);
+  const candidate = analyzePlan(candidateDocument);
+  const baselineFingerprint = planFingerprint(baselineDocument);
+  const candidateFingerprint = planFingerprint(candidateDocument);
+  const totalCostPercent = percentChange(baseline.summary.totalCost, candidate.summary.totalCost);
+  const planningTimePercent = percentChange(
+    baseline.summary.planningTimeMs,
+    candidate.summary.planningTimeMs
+  );
+  const executionTimePercent = percentChange(
+    baseline.summary.executionTimeMs,
+    candidate.summary.executionTimeMs
+  );
+  const riskDelta = candidate.summary.riskScore - baseline.summary.riskScore;
+  const primaryDelta = executionTimePercent ?? totalCostPercent;
+  const signals: string[] = [];
+
+  if (totalCostPercent !== null && Math.abs(totalCostPercent) >= 10) {
+    signals.push(`Planner cost changed by ${totalCostPercent}%.`);
+  }
+  if (executionTimePercent !== null && Math.abs(executionTimePercent) >= 10) {
+    signals.push(`Measured execution time changed by ${executionTimePercent}%.`);
+  }
+  if (riskDelta !== 0) signals.push(`Diagnostic risk score changed by ${riskDelta}.`);
+  if (baselineFingerprint !== candidateFingerprint) signals.push('The structural plan fingerprint changed.');
+
+  let verdict: PlanComparison['verdict'];
+  if (primaryDelta !== null && (primaryDelta >= 20 || riskDelta >= 12)) verdict = 'regressed';
+  else if (primaryDelta !== null && primaryDelta <= -20 && riskDelta <= 0) verdict = 'improved';
+  else if (baselineFingerprint === candidateFingerprint && (primaryDelta === null || Math.abs(primaryDelta) < 5)) {
+    verdict = 'equivalent';
+  } else verdict = 'changed';
+
+  const baselineTypes = countNodeTypes(baseline);
+  const candidateTypes = countNodeTypes(candidate);
+  const allTypes = [...new Set([...baselineTypes.keys(), ...candidateTypes.keys()])].sort();
+
+  return {
+    verdict,
+    baselineFingerprint,
+    candidateFingerprint,
+    structuralChange: baselineFingerprint !== candidateFingerprint,
+    deltas: {
+      totalCostPercent,
+      planningTimePercent,
+      executionTimePercent,
+      riskScore: riskDelta,
+      nodeCount: candidate.summary.nodeCount - baseline.summary.nodeCount,
+    },
+    nodeTypeChanges: allTypes
+      .map((nodeType) => {
+        const baselineCount = baselineTypes.get(nodeType) ?? 0;
+        const candidateCount = candidateTypes.get(nodeType) ?? 0;
+        return {
+          nodeType,
+          baseline: baselineCount,
+          candidate: candidateCount,
+          delta: candidateCount - baselineCount,
+        };
+      })
+      .filter((item) => item.delta !== 0),
+    signals,
   };
 };

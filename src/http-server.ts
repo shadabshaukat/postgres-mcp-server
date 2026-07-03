@@ -77,6 +77,17 @@ export class McpHttpServer {
     res.end(JSON.stringify(payload));
   }
 
+  private sendText(
+    res: http.ServerResponse,
+    status: number,
+    payload: string,
+    contentType: string
+  ): void {
+    if (res.writableEnded) return;
+    res.writeHead(status, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
+    res.end(payload);
+  }
+
   private validateSecurity(req: http.IncomingMessage): void {
     const hostHeader = req.headers.host;
     const hostname = hostHeader ? hostnameFromHeader(hostHeader) : undefined;
@@ -263,6 +274,16 @@ export class McpHttpServer {
 
     this.validateSecurity(req);
     const method = (req.method ?? 'GET').toUpperCase();
+    if (this.config.metricsEnabled && url.pathname === this.config.metricsPath) {
+      if (method !== 'GET') throw new HttpError(405, 'Metrics endpoint accepts GET only.');
+      this.sendText(
+        res,
+        200,
+        await this.service.prometheusMetrics(),
+        'text/plain; version=0.0.4; charset=utf-8'
+      );
+      return;
+    }
     const body = method === 'POST' ? await this.parseJsonBody(req) : undefined;
 
     if (

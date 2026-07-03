@@ -41,6 +41,21 @@ export interface HttpConfig {
   requestTimeoutMs: number;
   maxSessions: number;
   sessionTtlMs: number;
+  metricsEnabled: boolean;
+  metricsPath: string;
+}
+
+export interface MonitoringConfig {
+  connectionWarningPercent: number;
+  connectionCriticalPercent: number;
+  longQueryWarningSeconds: number;
+  longQueryCriticalSeconds: number;
+  idleTransactionWarningSeconds: number;
+  cacheHitWarningPercent: number;
+  deadTupleWarningPercent: number;
+  xidWarningPercent: number;
+  replicationLagWarningBytes: number;
+  replicationLagCriticalBytes: number;
 }
 
 export interface AppConfig {
@@ -48,6 +63,7 @@ export interface AppConfig {
   transportMode: TransportMode;
   database: DatabaseConfig;
   http: HttpConfig;
+  monitoring: MonitoringConfig;
   allowExplainAnalyze: boolean;
 }
 
@@ -214,6 +230,57 @@ export const loadConfig = (
   const rawUri = env.DATABASE_URI ?? env.POSTGRES_URL ?? env.DATABASE_URL;
   const normalizedUri = normalizeConnectionUriCredentials(rawUri);
   const connectionString = remapLocalhostInContainer(normalizedUri, env, fileExists);
+  const connectionWarningPercent = readInteger(
+    env.MCP_MONITOR_CONNECTION_WARN_PERCENT,
+    80,
+    'MCP_MONITOR_CONNECTION_WARN_PERCENT',
+    1,
+    99
+  );
+  const connectionCriticalPercent = readInteger(
+    env.MCP_MONITOR_CONNECTION_CRITICAL_PERCENT,
+    95,
+    'MCP_MONITOR_CONNECTION_CRITICAL_PERCENT',
+    2,
+    100
+  );
+  const longQueryWarningSeconds = readInteger(
+    env.MCP_MONITOR_LONG_QUERY_WARN_SECONDS,
+    30,
+    'MCP_MONITOR_LONG_QUERY_WARN_SECONDS',
+    1,
+    86_400
+  );
+  const longQueryCriticalSeconds = readInteger(
+    env.MCP_MONITOR_LONG_QUERY_CRITICAL_SECONDS,
+    300,
+    'MCP_MONITOR_LONG_QUERY_CRITICAL_SECONDS',
+    2,
+    604_800
+  );
+  const replicationLagWarningBytes = readInteger(
+    env.MCP_MONITOR_REPLICATION_LAG_WARN_BYTES,
+    64 * 1024 * 1024,
+    'MCP_MONITOR_REPLICATION_LAG_WARN_BYTES',
+    1,
+    10_000_000_000_000
+  );
+  const replicationLagCriticalBytes = readInteger(
+    env.MCP_MONITOR_REPLICATION_LAG_CRITICAL_BYTES,
+    1024 * 1024 * 1024,
+    'MCP_MONITOR_REPLICATION_LAG_CRITICAL_BYTES',
+    2,
+    10_000_000_000_000
+  );
+  if (connectionWarningPercent >= connectionCriticalPercent) {
+    throw new Error('MCP monitor connection warning threshold must be lower than critical.');
+  }
+  if (longQueryWarningSeconds >= longQueryCriticalSeconds) {
+    throw new Error('MCP monitor long-query warning threshold must be lower than critical.');
+  }
+  if (replicationLagWarningBytes >= replicationLagCriticalBytes) {
+    throw new Error('MCP monitor replication-lag warning threshold must be lower than critical.');
+  }
 
   return {
     accessMode,
@@ -304,6 +371,44 @@ export const loadConfig = (
         10_000,
         24 * 60 * 60_000
       ),
+      metricsEnabled: readBoolean(env.MCP_ENABLE_METRICS, false),
+      metricsPath: normalizePath(env.MCP_METRICS_PATH ?? '/metrics', 'MCP_METRICS_PATH'),
+    },
+    monitoring: {
+      connectionWarningPercent,
+      connectionCriticalPercent,
+      longQueryWarningSeconds,
+      longQueryCriticalSeconds,
+      idleTransactionWarningSeconds: readInteger(
+        env.MCP_MONITOR_IDLE_TRANSACTION_WARN_SECONDS,
+        60,
+        'MCP_MONITOR_IDLE_TRANSACTION_WARN_SECONDS',
+        1,
+        604_800
+      ),
+      cacheHitWarningPercent: readInteger(
+        env.MCP_MONITOR_CACHE_HIT_WARN_PERCENT,
+        95,
+        'MCP_MONITOR_CACHE_HIT_WARN_PERCENT',
+        1,
+        100
+      ),
+      deadTupleWarningPercent: readInteger(
+        env.MCP_MONITOR_DEAD_TUPLE_WARN_PERCENT,
+        20,
+        'MCP_MONITOR_DEAD_TUPLE_WARN_PERCENT',
+        1,
+        100
+      ),
+      xidWarningPercent: readInteger(
+        env.MCP_MONITOR_XID_WARN_PERCENT,
+        80,
+        'MCP_MONITOR_XID_WARN_PERCENT',
+        1,
+        99
+      ),
+      replicationLagWarningBytes,
+      replicationLagCriticalBytes,
     },
   };
 };

@@ -116,7 +116,10 @@ if (!databaseUrl) {
       'execute_sql',
       'explain_query',
       'diagnose_query',
+      'compare_query_plans',
+      'recommend_indexes',
       'list_slow_queries',
+      'monitor_database',
       'database_health',
     ]) {
       assert.ok(names.includes(name), `${name} should be advertised`);
@@ -124,7 +127,7 @@ if (!databaseUrl) {
 
     const info = await stdioClient.callTool({ name: 'server_info', arguments: {} });
     assert.equal(info.isError, undefined);
-    assert.equal(asObject(asObject(info.structuredContent).server).version, '0.2.0');
+    assert.equal(asObject(asObject(info.structuredContent).server).version, '0.3.0');
 
     const resources = await stdioClient.listResources();
     assert.ok(resources.resources.some((resource) => resource.uri === 'postgres://catalog'));
@@ -196,7 +199,7 @@ if (!databaseUrl) {
     assert.ok(Date.now() - started < 1_500, 'query should be cancelled by statement_timeout');
   });
 
-  test('returns explain plans and deterministic query findings', async () => {
+  test('returns findings, compares plans, and recommends advisory indexes', async () => {
     const explained = await stdioClient.callTool({
       name: 'explain_query',
       arguments: { sql: 'SELECT * FROM mcp_test.events WHERE account_id = $1', params: [10] },
@@ -214,22 +217,64 @@ if (!databaseUrl) {
     assert.equal(diagnosed.isError, undefined);
     const findings = asObject(diagnosed.structuredContent).findings as Array<Record<string, unknown>>;
     assert.ok(findings.some((finding) => finding.code === 'large_sequential_scan'));
+
+    const compared = await stdioClient.callTool({
+      name: 'compare_query_plans',
+      arguments: {
+        baselineSql: "SELECT * FROM mcp_test.events WHERE category = 'rare'",
+        candidateSql: 'SELECT * FROM mcp_test.events WHERE id = $1',
+        candidateParams: [1],
+      },
+    });
+    assert.equal(compared.isError, undefined);
+    const comparison = asObject(asObject(compared.structuredContent).comparison);
+    assert.equal(comparison.structuralChange, true);
+    assert.ok(['improved', 'changed'].includes(String(comparison.verdict)));
+
+    const recommended = await stdioClient.callTool({
+      name: 'recommend_indexes',
+      arguments: {
+        sql: "SELECT * FROM mcp_test.events WHERE category = 'rare'",
+        validateWithHypopg: true,
+      },
+    });
+    assert.equal(recommended.isError, undefined);
+    const recommendationPayload = asObject(recommended.structuredContent);
+    assert.ok(Number(recommendationPayload.candidateCount) >= 1);
+    assert.equal(asObject(recommendationPayload.hypopg).available, false);
+    const recommendations = recommendationPayload.recommendations as Array<Record<string, unknown>>;
+    assert.match(String(recommendations[0]?.createIndexSql), /CREATE INDEX CONCURRENTLY/);
   });
 
-  test('reports pg_stat_statements and database health', async () => {
+  test('reports expanded workload statistics and scored database monitoring', async () => {
     const slow = await stdioClient.callTool({
       name: 'list_slow_queries',
       arguments: { limit: 10, orderBy: 'total_exec_time' },
     });
-    assert.equal(slow.isError, undefined);
-    assert.equal(asObject(slow.structuredContent).available, true);
+    assert.equal(slow.isError, undefined, JSON.stringify(slow.content));
+    const slowPayload = asObject(slow.structuredContent);
+    assert.equal(slowPayload.available, true);
+    const slowQueries = slowPayload.queries as Array<Record<string, unknown>>;
+    assert.ok(slowQueries.length > 0);
+    assert.ok('max_exec_time_ms' in (slowQueries[0] ?? {}));
+    assert.ok('wal_bytes' in (slowQueries[0] ?? {}));
+
+    const monitoring = await stdioClient.callTool({ name: 'monitor_database', arguments: {} });
+    assert.equal(monitoring.isError, undefined);
+    const monitoringPayload = asObject(monitoring.structuredContent);
+    assert.ok(['healthy', 'degraded', 'critical'].includes(String(monitoringPayload.status)));
+    assert.equal(asObject(monitoringPayload.capabilities).pgStatIo, true);
+    assert.equal(asObject(monitoringPayload.io).available, true);
+    assert.equal(asObject(monitoringPayload.checkpoints).available, true);
 
     const health = await stdioClient.callTool({ name: 'database_health', arguments: {} });
     assert.equal(health.isError, undefined);
-    assert.ok(['healthy', 'degraded'].includes(String(asObject(health.structuredContent).status)));
+    assert.ok(
+      ['healthy', 'degraded', 'critical'].includes(String(asObject(health.structuredContent).status))
+    );
   });
 
-  test('requires bearer auth and validates Origin over Streamable HTTP', async () => {
+  test('secures Streamable HTTP and exports authenticated Prometheus metrics', async () => {
     const port = await freePort();
     const token = 'e2e-http-secret-token';
     const origin = `http://localhost:${port}`;
@@ -245,6 +290,7 @@ if (!databaseUrl) {
         MCP_AUTH_TOKEN: token,
         MCP_ALLOWED_HOSTS: '127.0.0.1,localhost',
         MCP_ALLOWED_ORIGINS: origin,
+        MCP_ENABLE_METRICS: 'true',
       },
       stdio: ['ignore', 'ignore', 'pipe'],
     });
@@ -282,6 +328,15 @@ if (!databaseUrl) {
         body: '{}',
       });
       assert.equal(invalidOrigin.status, 403);
+
+      const unauthorizedMetrics = await fetch(`http://127.0.0.1:${port}/metrics`);
+      assert.equal(unauthorizedMetrics.status, 401);
+
+      const metrics = await fetch(`http://127.0.0.1:${port}/metrics`, {
+        headers: { Authorization: `Bearer ${token}`, Origin: origin },
+      });
+      assert.equal(metrics.status, 200);
+      assert.match(await metrics.text(), /postgres_mcp_health_score/);
 
       const transport = new StreamableHTTPClientTransport(
         new URL(`http://127.0.0.1:${port}/mcp`),

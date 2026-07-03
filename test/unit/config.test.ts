@@ -11,6 +11,9 @@ test('uses fail-closed local defaults', () => {
   assert.equal(config.http.host, '127.0.0.1');
   assert.equal(config.database.sslFallbackToDisable, false);
   assert.equal(config.allowExplainAnalyze, false);
+  assert.equal(config.http.metricsEnabled, false);
+  assert.equal(config.monitoring.connectionWarningPercent, 80);
+  assert.equal(config.monitoring.connectionCriticalPercent, 95);
 });
 
 test('requires authentication and allowed hosts for remote HTTP', () => {
@@ -74,4 +77,26 @@ test('maps localhost to the Podman/Docker host alias inside a container', () => 
     (path) => path === '/run/.containerenv'
   );
   assert.match(config.database.connectionString ?? '', /host\.containers\.internal/);
+});
+
+test('validates monitoring threshold ordering', () => {
+  assert.throws(
+    () =>
+      loadConfig(
+        {
+          MCP_MONITOR_CONNECTION_WARN_PERCENT: '95',
+          MCP_MONITOR_CONNECTION_CRITICAL_PERCENT: '90',
+        },
+        argv,
+        () => false
+      ),
+    /warning threshold must be lower than critical/
+  );
+  const config = loadConfig(
+    { MCP_ENABLE_METRICS: 'true', MCP_METRICS_PATH: '/internal/metrics' },
+    argv,
+    () => false
+  );
+  assert.equal(config.http.metricsEnabled, true);
+  assert.equal(config.http.metricsPath, '/internal/metrics');
 });

@@ -72,6 +72,17 @@ export class Database {
     params: readonly SqlParameter[] = [],
     options: QueryExecutionOptions
   ): Promise<pg.QueryResult<T>> {
+    return this.withSession(options, async (client) => {
+      const result = await client.query<T>(sql, [...params]);
+      this.assertResultSize(result.rows);
+      return result;
+    });
+  }
+
+  async withSession<T>(
+    options: QueryExecutionOptions,
+    callback: (client: pg.PoolClient) => Promise<T>
+  ): Promise<T> {
     if (options.signal?.aborted) throw new Error('Query cancelled before execution.');
 
     const client = await this.pool.connect();
@@ -104,8 +115,7 @@ export class Database {
         options.signal.addEventListener('abort', abortHandler, { once: true });
       }
 
-      const result = await client.query<T>(sql, [...params]);
-      this.assertResultSize(result.rows);
+      const result = await callback(client);
       await client.query('COMMIT');
       return result;
     } catch (error) {
