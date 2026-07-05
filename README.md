@@ -16,6 +16,20 @@
 
 A secure PostgreSQL Model Context Protocol server with bounded SQL execution, deterministic query tuning, workload analysis, scored database monitoring, and Prometheus metrics.
 
+
+This project was built to follow a more Enterprise Postgres-MCP style design:
+
+- Clear **access modes**: `restricted` (safe/read-only oriented) and `unrestricted`
+- Clean **tool model** for schema/object discovery and SQL execution
+- Stable **dual transport** support: `stdio` and Streamable HTTP (`sse`)
+- Better startup/runtime diagnostics for DB connectivity
+- Docker-focused remote DB usage (including host SSH tunnel pattern)
+
+## Tested On
+- OCI PostgreSQL 
+- Amazon RDS PostgreSQL 
+- Amazon Aurora PostgreSQL 
+
 ## Quick start: local PostgreSQL 18, Claude Desktop, and Codex
 
 This flow starts one long-running MCP container and connects both clients to the same Streamable HTTP endpoint. PostgreSQL credentials are supplied only to the MCP container; Claude Desktop and Codex receive the MCP URL and bearer token.
@@ -187,7 +201,41 @@ Merge this server into the existing top-level `mcpServers` object, replacing `pa
 }
 ```
 
-`--allow-http` is appropriate here only because the server is bound to the local loopback interface, and `--transport http-only` selects the server's Streamable HTTP transport. Keep `Authorization:${AUTH_HEADER}` without spaces around the colon; this avoids argument parsing problems on some Claude Desktop installations. Completely quit and restart Claude Desktop, then open **+ > Connectors** in a conversation and confirm that `postgres` and its tools are available. If Claude cannot find `npx`, replace `"command": "npx"` with the absolute path returned by `command -v npx`.
+eg:
+
+```
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://127.0.0.1:8899/mcp",
+        "--allow-http",
+        "--transport",
+        "http-only",
+        "--header",
+        "Authorization:${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer 6ef58649864f1c10fec31f66dfcb3f3b33b2cb356597c746159405615fd7efb5"
+      }
+    }
+  }
+```
+
+`AUTH_HEADER` is the complete HTTP authorization value and must start with `Bearer `; the raw token by itself will be rejected. `--allow-http` is appropriate here only because the server is bound to the local loopback interface, and `--transport http-only` selects the server's Streamable HTTP transport. Keep `Authorization:${AUTH_HEADER}` without spaces around the colon; this avoids argument parsing problems on some Claude Desktop installations.
+
+Verify that Claude can start the bridge:
+
+```bash
+npx --version
+```
+
+If `npx` is not found, replace `"command": "npx"` with the absolute path returned by `command -v npx`. On a Homebrew-based macOS installation, repair a broken Node/npx dynamic-library installation with `brew reinstall node`.
+
+Completely quit and restart Claude Desktop, then open **+ > Connectors** in a conversation and confirm that `postgres` and its tools are available.
 
 ### Database host from the MCP container
 
