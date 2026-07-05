@@ -3,7 +3,6 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/license/apache-2-0)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![npm version](https://img.shields.io/npm/v/postgres-mcp-server)](https://www.npmjs.com/package/postgres-mcp-server)
-[![Build](https://img.shields.io/github/actions/workflow/status/shadabshaukat/postgres-mcp-server/<workflow-file>.yml?branch=main)](https://github.com/shadabshaukat/postgres-mcp-server/actions)
 [![Last Commit](https://img.shields.io/github/last-commit/shadabshaukat/postgres-mcp-server)](https://github.com/shadabshaukat/postgres-mcp-server/commits/main)
 [![Docker Pulls](https://img.shields.io/docker/pulls/9382382888/postgres-mcp-server)](https://hub.docker.com/r/9382382888/postgres-mcp-server)
 [![Issues](https://img.shields.io/github/issues/shadabshaukat/postgres-mcp-server)](https://github.com/shadabshaukat/postgres-mcp-server/issues)
