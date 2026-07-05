@@ -1,26 +1,45 @@
-# Postgres MCP Server
+# Postgres MCP Server 
 
-[![CI](https://img.shields.io/github/actions/workflow/status/shadabshaukat/postgres-mcp-server/ci.yml?branch=main&style=flat-square&label=CI&logo=githubactions&logoColor=white)](https://github.com/shadabshaukat/postgres-mcp-server/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-2ea44f?style=flat-square)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![MCP](https://img.shields.io/badge/MCP-stdio%20%7C%20HTTP-6D4AFF?style=flat-square)](https://modelcontextprotocol.io/)
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Podman](https://img.shields.io/badge/Podman-tested-892CA0?style=flat-square&logo=podman&logoColor=white)](https://podman.io/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/license/apache-2-0)
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![npm version](https://img.shields.io/npm/v/postgres-mcp-server)](https://www.npmjs.com/package/postgres-mcp-server)
+[![Build](https://img.shields.io/github/actions/workflow/status/shadabshaukat/postgres-mcp-server/<workflow-file>.yml?branch=main)](https://github.com/shadabshaukat/postgres-mcp-server/actions)
+[![Last Commit](https://img.shields.io/github/last-commit/shadabshaukat/postgres-mcp-server)](https://github.com/shadabshaukat/postgres-mcp-server/commits/main)
+[![Docker Pulls](https://img.shields.io/docker/pulls/9382382888/postgres-mcp-server)](https://hub.docker.com/r/9382382888/postgres-mcp-server)
+[![Issues](https://img.shields.io/github/issues/shadabshaukat/postgres-mcp-server)](https://github.com/shadabshaukat/postgres-mcp-server/issues)
+[![Pull Requests](https://img.shields.io/github/issues-pr/shadabshaukat/postgres-mcp-server)](https://github.com/shadabshaukat/postgres-mcp-server/pulls)
+[![Stars](https://img.shields.io/github/stars/shadabshaukat/postgres-mcp-server?style=social)](https://github.com/shadabshaukat/postgres-mcp-server/stargazers)
+[![Forks](https://img.shields.io/github/forks/shadabshaukat/postgres-mcp-server?style=social)](https://github.com/shadabshaukat/postgres-mcp-server/network/members)
+
+<img width="1536" height="1024" alt="Building a server with Postgres power" src="https://github.com/user-attachments/assets/5af3c36b-7a7e-4c40-aa9b-da074205a2a2" />
+
 
 A secure PostgreSQL Model Context Protocol server with bounded SQL execution, deterministic query tuning, workload analysis, scored database monitoring, and Prometheus metrics.
 
-## Quick start: Docker or Podman
+## Quick start: local PostgreSQL 18, Claude Desktop, and Codex
 
-Container deployment is the recommended way to run this server. The release includes the compiled `build/index.js`, so container users do not need Node.js or npm.
+This flow starts one long-running MCP container and connects both clients to the same Streamable HTTP endpoint. PostgreSQL credentials are supplied only to the MCP container; Claude Desktop and Codex receive the MCP URL and bearer token.
+
+The commands below match a local PostgreSQL container created as follows:
+
+```bash
+docker run --name postgres18 \
+  --env POSTGRES_PASSWORD=my_secure_password \
+  --publish 5432:5432 \
+  --volume pg18_data:/var/lib/postgresql \
+  --detach postgres:18
+```
+
+If `postgres18` already exists, do not run that command again. Confirm that it is running with `docker ps --filter name=postgres18`; use `docker start postgres18` if it is stopped. Because `POSTGRES_DB` was not set, the database name is `postgres`.
 
 ### 1. Requirements
 
 | Requirement | Version or guidance |
 | --- | --- |
-| Container runtime | Docker or Podman |
+| Container runtime | Docker Desktop for the exact local example; Docker or Podman for other deployments |
 | PostgreSQL | 14 or newer |
-| Database account | Dedicated role with only the privileges the MCP client needs |
+| Database account | Prefer a dedicated role with only the privileges the MCP client needs |
+| Claude Desktop bridge | Node.js 18 or newer with `npx`; not required for the MCP container or Codex |
 
 Clone the repository and enter it:
 
@@ -29,7 +48,7 @@ git clone https://github.com/shadabshaukat/postgres-mcp-server.git
 cd postgres-mcp-server
 ```
 
-### 2. Build the image
+### 2. Build the MCP image
 
 Docker:
 
@@ -45,54 +64,96 @@ podman machine start
 podman build --format docker --tag postgres-mcp-server:latest .
 ```
 
-### 3. Connect Codex
+### 3. Launch the MCP container with PostgreSQL credentials
 
-The simplest local configuration lets Codex launch a short-lived stdio container automatically. The same MCP configuration is shared by the Codex app, CLI, and IDE extension.
-
-Docker:
+If an earlier attempt created a stopped container with the same name, remove only that failed MCP container before retrying:
 
 ```bash
-codex mcp add postgres \
-  --env DATABASE_URI='postgres://mcp_reader:password@db-host:5432/app?sslmode=require' \
-  -- docker run --rm -i \
-  --env DATABASE_URI \
-  --env MCP_TRANSPORT=stdio \
+docker rm postgres-mcp
+```
+
+Start the MCP server. The first line reuses `POSTGRES_MCP_TOKEN` when it is already set or generates a new 64-character token. Save the printed value somewhere secure because Codex and Claude Desktop must use the same token.
+
+```bash
+export POSTGRES_MCP_TOKEN="${POSTGRES_MCP_TOKEN:-$(openssl rand -hex 32)}"
+printf 'Save this MCP token: %s\n' "$POSTGRES_MCP_TOKEN"
+
+docker run --detach --name postgres-mcp \
+  --publish 127.0.0.1:8899:8899 \
+  --env 'DATABASE_URI=postgresql://postgres:my_secure_password@host.docker.internal:5432/postgres?sslmode=disable' \
+  --env PGSSLMODE=disable \
+  --env MCP_TRANSPORT=http \
+  --env MCP_HTTP_HOST=0.0.0.0 \
+  --env MCP_HTTP_PORT=8899 \
+  --env MCP_HTTP_PATH=/mcp \
   --env MCP_DB_MODE=restricted \
+  --env "MCP_AUTH_TOKEN=${POSTGRES_MCP_TOKEN:?POSTGRES_MCP_TOKEN is not set}" \
+  --env 'MCP_ALLOWED_HOSTS=localhost,127.0.0.1' \
+  --env 'MCP_ALLOWED_ORIGINS=http://localhost:8899,http://127.0.0.1:8899' \
   postgres-mcp-server:latest
 ```
 
-For Podman, use the same command with `podman run` after the `--` separator.
+`host.docker.internal` is intentional: `localhost` inside the MCP container would refer to the MCP container itself. The stock local `postgres:18` container does not use TLS, so this trusted local connection uses `sslmode=disable`. Keep `MCP_DB_MODE=restricted` unless the database role and endpoint are explicitly intended to permit writes.
 
-Verify the configuration:
+The `postgres` superuser and sample password are used here only to match this local walkthrough. For anything beyond local testing, create a dedicated least-privilege role and inject its URI through your normal secret-management process; Docker environment variables are visible in container metadata.
+
+Check the startup log and database readiness:
 
 ```bash
+docker logs postgres-mcp
+curl http://127.0.0.1:8899/readyz
+```
+
+The readiness response should be `{"status":"ready"}`. If the MCP container exited, `docker logs postgres-mcp` reports the database connection or configuration error.
+
+The running container serves:
+
+| Endpoint | Purpose | Authentication |
+| --- | --- | --- |
+| `http://127.0.0.1:8899/mcp` | Streamable HTTP MCP | Bearer token required |
+| `http://127.0.0.1:8899/healthz` | Process liveness | None |
+| `http://127.0.0.1:8899/readyz` | PostgreSQL readiness | None |
+| `http://127.0.0.1:8899/metrics` | Prometheus metrics | Available only when `MCP_ENABLE_METRICS=true` |
+
+The host-side port is bound to `127.0.0.1`, so this example is reachable only from the local machine.
+
+### 4. Connect Codex to the running container
+
+Codex supports Streamable HTTP directly. In the same shell where `POSTGRES_MCP_TOKEN` is set, run:
+
+```bash
+codex mcp add postgres \
+  --url http://127.0.0.1:8899/mcp \
+  --bearer-token-env-var POSTGRES_MCP_TOKEN
+
 codex mcp list
 ```
 
-Start a new Codex session. In the CLI, `/mcp` shows the connected tools. In the Codex app, open **Settings > Integrations & MCP** to review the shared configuration.
+The Codex app, CLI, and IDE extension share this MCP configuration. Make `POSTGRES_MCP_TOKEN` available in the environment whenever Codex starts, then start a new session. In the CLI, `/mcp` shows the connected server; in the Codex app, review **Settings > Integrations & MCP**.
 
-You can also configure Codex directly in `~/.codex/config.toml`:
+You can configure the same server directly in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.postgres]
-command = "docker" # Change to "podman" when using Podman.
-args = [
-  "run", "--rm", "-i",
-  "--env", "DATABASE_URI",
-  "--env", "MCP_TRANSPORT=stdio",
-  "--env", "MCP_DB_MODE=restricted",
-  "postgres-mcp-server:latest"
-]
+url = "http://127.0.0.1:8899/mcp"
+bearer_token_env_var = "POSTGRES_MCP_TOKEN"
 startup_timeout_sec = 30
 tool_timeout_sec = 120
-
-[mcp_servers.postgres.env]
-DATABASE_URI = "postgres://mcp_reader:password@db-host:5432/app?sslmode=require"
 ```
 
-### 4. Connect Claude Desktop
+If a GUI-launched Codex app cannot inherit `POSTGRES_MCP_TOKEN`, replace `bearer_token_env_var` with `http_headers = { Authorization = "Bearer paste-the-token-from-step-3" }`. This is simpler but stores the token in plain text in `config.toml`.
 
-For a local database or local container, use Claude Desktop's local MCP configuration. Do not use Claude's remote custom connector for `localhost`; remote connectors originate from Anthropic's cloud and require a publicly reachable server.
+If an older `postgres` entry already exists, remove or rename it before adding this one.
+
+### 5. Connect Claude Desktop to the running container
+
+Claude Desktop's local MCP configuration expects a local process definition. The `mcp-remote` bridge from the previously working README configuration adapts the local stdio connection to the container's Streamable HTTP endpoint. Do not use Claude's cloud-hosted remote connector for `127.0.0.1`; Anthropic's cloud cannot reach a server on your computer.
+
+Print the token from step 3 and copy its value:
+
+```bash
+printf '%s\n' "$POSTGRES_MCP_TOKEN"
+```
 
 Open **Claude Desktop > Settings > Developer > Edit Config**. The configuration file is normally:
 
@@ -101,98 +162,47 @@ Open **Claude Desktop > Settings > Developer > Edit Config**. The configuration 
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 
-Add this configuration:
+Merge this server into the existing top-level `mcpServers` object, replacing `paste-the-token-from-step-3` with the token value:
 
 ```json
 {
   "mcpServers": {
     "postgres": {
-      "command": "docker",
+      "command": "npx",
       "args": [
-        "run",
-        "--rm",
-        "-i",
-        "--env",
-        "DATABASE_URI",
-        "--env",
-        "MCP_TRANSPORT=stdio",
-        "--env",
-        "MCP_DB_MODE=restricted",
-        "postgres-mcp-server:latest"
+        "-y",
+        "mcp-remote",
+        "http://127.0.0.1:8899/mcp",
+        "--allow-http",
+        "--transport",
+        "http-only",
+        "--header",
+        "Authorization:${AUTH_HEADER}"
       ],
       "env": {
-        "DATABASE_URI": "postgres://mcp_reader:password@db-host:5432/app?sslmode=require"
+        "AUTH_HEADER": "Bearer paste-the-token-from-step-3"
       }
     }
   }
 }
 ```
 
-For Podman, change `"command": "docker"` to `"command": "podman"`.
+`--allow-http` is appropriate here only because the server is bound to the local loopback interface, and `--transport http-only` selects the server's Streamable HTTP transport. Keep `Authorization:${AUTH_HEADER}` without spaces around the colon; this avoids argument parsing problems on some Claude Desktop installations. Completely quit and restart Claude Desktop, then open **+ > Connectors** in a conversation and confirm that `postgres` and its tools are available. If Claude cannot find `npx`, replace `"command": "npx"` with the absolute path returned by `command -v npx`.
 
-Completely quit and restart Claude Desktop. Open **+ > Connectors** in a conversation to confirm that `postgres` and its tools are available. If Claude cannot find Docker or Podman, replace `command` with the absolute path returned by `command -v docker` or `command -v podman`.
-
-These quick-start examples store `DATABASE_URI` in a local client configuration file. Protect that file with user-only permissions and use a dedicated least-privilege database role. For managed deployments, inject the URI through your normal secret-management process instead.
-
-### Database host from a container
+### Database host from the MCP container
 
 The database hostname is resolved from inside the MCP container:
 
 | Database location | Hostname in `DATABASE_URI` |
 | --- | --- |
+| PostgreSQL published on a Docker Desktop host | `host.docker.internal` |
+| PostgreSQL published on a Podman host | `host.containers.internal` |
+| PostgreSQL in the same user-defined container network | Its container or Compose service name |
 | Remote PostgreSQL | Its normal DNS name or IP address |
-| PostgreSQL on Docker Desktop host | `host.docker.internal` |
-| PostgreSQL on Podman host | `host.containers.internal` |
-| PostgreSQL in the same Compose network | Its Compose service name |
 
-Percent-encode reserved characters in URI usernames and passwords. Use `sslmode=require` or `sslmode=verify-full` for remote databases; use `sslmode=disable` only for a trusted local database that does not support TLS.
+For a different database, replace only `DATABASE_URI` and the related TLS setting in the launch command. Percent-encode reserved characters in URI usernames and passwords. Use `sslmode=require` or `sslmode=verify-full` for remote databases; use `sslmode=disable` only for a trusted local database that does not support TLS.
 
-## Optional: long-running HTTP service
-
-Use Streamable HTTP when several clients share one server or when the MCP process should run independently of a desktop client.
-
-Docker:
-
-```bash
-docker run --detach --name postgres-mcp \
-  --publish 127.0.0.1:8899:8899 \
-  --env DATABASE_URI='postgres://mcp_reader:password@db-host:5432/app?sslmode=require' \
-  --env MCP_TRANSPORT=http \
-  --env MCP_HTTP_HOST=0.0.0.0 \
-  --env MCP_AUTH_TOKEN='replace-with-a-long-random-token' \
-  --env MCP_ALLOWED_HOSTS='localhost,127.0.0.1' \
-  --env MCP_ALLOWED_ORIGINS='http://localhost:8899,http://127.0.0.1:8899' \
-  --env MCP_ENABLE_METRICS=true \
-  postgres-mcp-server:latest
-```
-
-For Podman, replace `docker` with `podman`.
-
-Check readiness:
-
-```bash
-curl http://127.0.0.1:8899/readyz
-```
-
-The endpoints are:
-
-| Endpoint | Purpose |
-| --- | --- |
-| `http://127.0.0.1:8899/mcp` | Streamable HTTP MCP |
-| `http://127.0.0.1:8899/healthz` | Process liveness |
-| `http://127.0.0.1:8899/readyz` | PostgreSQL readiness |
-| `http://127.0.0.1:8899/metrics` | Prometheus metrics when enabled |
-
-Connect Codex to the running HTTP service:
-
-```bash
-export POSTGRES_MCP_TOKEN='replace-with-a-long-random-token'
-codex mcp add postgres-http \
-  --url http://127.0.0.1:8899/mcp \
-  --bearer-token-env-var POSTGRES_MCP_TOKEN
-```
-
-Make `POSTGRES_MCP_TOKEN` available whenever Codex starts. For a public deployment, terminate TLS at a trusted reverse proxy and use an OAuth-aware identity layer rather than exposing the static-token endpoint directly.
+For Podman, replace `docker` with `podman` and `host.docker.internal` with `host.containers.internal`. For a public deployment, terminate TLS at a trusted reverse proxy and use an OAuth-aware identity layer instead of exposing this static-token endpoint directly.
 
 ### Docker Compose
 
@@ -234,7 +244,7 @@ codex mcp add postgres-npm \
   -- node /absolute/path/to/postgres-mcp-server/build/index.js
 ```
 
-For Claude Desktop, use the earlier JSON example with `command` set to the absolute path of `node`, `args` set to the absolute `build/index.js` path, and `DATABASE_URI` in `env`.
+For Claude Desktop, replace the earlier `mcp-remote` entry with a local stdio definition: set `command` to the absolute path of `node`, set `args` to the absolute `build/index.js` path, and put `DATABASE_URI` plus `MCP_TRANSPORT=stdio` in `env`.
 
 Run a loopback HTTP server manually:
 
