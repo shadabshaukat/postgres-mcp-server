@@ -156,6 +156,24 @@ tool_timeout_sec = 120
 
 If a GUI-launched Codex app cannot inherit `POSTGRES_MCP_TOKEN`, replace `bearer_token_env_var` with `http_headers = { Authorization = "Bearer paste-the-token-from-step-3" }`. This is simpler but stores the token in plain text in `config.toml`.
 
+If the issue is that POSTGRES_MCP_TOKEN is correctly referenced in the Codex configuration but is not set in the Codex process environment. After setting it, restart Codex and open a new thread so the PostgreSQL tools load.
+
+```bash
+POSTGRES_MCP_TOKEN="$(docker exec postgres-mcp printenv MCP_AUTH_TOKEN)"
+open -na "Codex" --env "POSTGRES_MCP_TOKEN=$POSTGRES_MCP_TOKEN"
+unset POSTGRES_MCP_TOKEN
+```
+
+For a login-session-wide setting instead:
+```bash
+launchctl setenv POSTGRES_MCP_TOKEN "$(docker exec postgres-mcp printenv MCP_AUTH_TOKEN)"
+```
+Then quit and reopen Codex normally. Remove it later with:
+
+```bash
+launchctl unsetenv POSTGRES_MCP_TOKEN
+```
+
 If an older `postgres` entry already exists, remove or rename it before adding this one.
 
 ### 5. Connect Claude Desktop to the running container
